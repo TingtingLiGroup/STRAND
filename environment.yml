@@ -1,0 +1,30 @@
+name: subcellular
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - tqdm
+  - pyarrow
+  - shapely
+  - geopandas
+  - networkx
+  - statsmodels
+  - pillow
+  - pytest
+  - anndata
+  - astropy
+  - pip
+  - pip:
+      - xgboost
+      - joblib
+      - kneed
+      - minisom
+
