@@ -22,12 +22,6 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
-
-[project.urls]
-Homepage = "https://github.com/TingtingLiGroup/STRAND"
-Repository = "https://github.com/TingtingLiGroup/STRAND"
-Issues = "https://github.com/TingtingLiGroup/STRAND/issues"
-
 dependencies = [
     "numpy>=1.24,<2.0",
     "pandas>=1.5,<2.4",
@@ -48,6 +42,10 @@ dependencies = [
     "astropy>=5,<7",
 ]
 
+[project.urls]
+Homepage = "https://github.com/TingtingLiGroup/STRAND"
+Repository = "https://github.com/TingtingLiGroup/STRAND"
+Issues = "https://github.com/TingtingLiGroup/STRAND/issues"
 
 [project.optional-dependencies]
 gpu = [
