@@ -29,6 +29,7 @@ def _normalize_index(df: pd.DataFrame) -> pd.DataFrame:
 
 def _save_df(df: pd.DataFrame, out_path: str) -> str:
     """Write output to parquet/csv; return actual path."""
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     if out_path.endswith(".parquet"):
         df.reset_index().to_parquet(out_path, index=False)
         return out_path

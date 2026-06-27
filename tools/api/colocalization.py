@@ -174,8 +174,11 @@ def _save_intermediate_outputs(*, out_dir: Path, result: dict, save_intermediate
 def _safe_group_name(x) -> str:
     import re
     x = str(x)
-    x = re.sub(r"[^\w\-.]+", "_", x)
-    return x.strip("_") or "unknown"
+    x = re.sub(r"[^\w\-]+", "_", x)
+    x = x.strip("_.")
+    if not x or x in (".", ".."):
+        return "unknown"
+    return x
 
 
 def _attach_groupby_from_coordinates(bundle: dict, groupby: str) -> dict:

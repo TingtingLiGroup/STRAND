@@ -45,8 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-prefilter", action="store_true", help="Disable toolbox standard prefilter. Useful for paper-like InSTAnT reproduction.")
     parser.add_argument("--nc-ratio-q-low", type=float, default=0.025, help="Lower quantile for nc ratio filtering.")
     parser.add_argument("--nc-ratio-q-high", type=float, default=0.975, help="Upper quantile for nc ratio filtering.")
-    parser.add_argument("--nc-ratio-mean-low", type=float, default=0.4, help="Target lower bound for filtered nc ratio mean.")
-    parser.add_argument("--nc-ratio-mean-high", type=float, default=0.6, help="Target upper bound for filtered nc ratio mean.")
+    parser.add_argument("--nc-ratio-mean-low", type=float, default=0.4, help="nc ratio mean reporting lower bound (reporting only, not enforced).")
+    parser.add_argument("--nc-ratio-mean-high", type=float, default=0.6, help="nc ratio mean reporting upper bound (reporting only, not enforced).")
     parser.add_argument("--cellgene-filter-min-transcripts", type=int, default=6, help="Minimum transcript count for each cell-gene sample.")
     parser.add_argument("--gene-filter-min-cells", type=int, default=10, help="Minimum cells required for each gene after cell-gene filtering.")
 
