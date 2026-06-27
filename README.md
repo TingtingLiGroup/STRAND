@@ -1,11 +1,13 @@
 # STRAND Tools
 
-STRAND (Subcellular Transcript RNA Architecture and Navigation Database) Tools is a command-line toolbox for subcellular spatial transcriptomics analysis. It provides four modules for standardized PKL input data:
+STRAND (Subcellular Transcript RNA Architecture and Navigation Database) Tools is a command-line toolbox for subcellular spatial transcriptomics analysis. It provides four commands for standardized PKL input data:
 
-1. RNA localization pattern classification (`subcellfeat`)
-2. Pattern prediction from pre-computed features (`subcellfeat-pattern`)
-3. Subcellular compartment detection (`subcellfeat-compartment`)
-4. RNA colocalization analysis (`subcellfeat-coloc`)
+| Command | Function |
+|---------|----------|
+| `subcellfeat` | Full pipeline: compute 17 spatial features (Bento + SPRAWL) and predict RNA localization patterns |
+| `subcellfeat-pattern` | Predict patterns from pre-computed feature parquet (skip feature computation) |
+| `subcellfeat-compartment` | Detect subcellular transcriptomic compartments via RNAflux embedding + SOM clustering |
+| `subcellfeat-coloc` | Identify significant RNA-RNA colocalization pairs via InSTAnT PP + CPB |
 
 The toolbox is designed for molecule-resolved spatial transcriptomics datasets such as MERFISH, Xenium, CosMx, seqFISH, and other transcript-level spatial data.
 
@@ -13,111 +15,72 @@ The toolbox is designed for molecule-resolved spatial transcriptomics datasets s
 
 ## 1. Main Functions
 
-### 1.1 Pattern Classification
+### 1.1 Pattern Classification (`subcellfeat`)
 
-Command:
-
-```bash
-subcellfeat
-```
-
-This module predicts RNA localization patterns for each cell-gene pair. It computes Bento and SPRAWL spatial features, then applies a trained XGBoost classifier.
-
-The final output column is:
-
-```text
-pattern
-```
+The main command. It computes 17 spatial features (13 Bento + 4 SPRAWL) for each cell-gene pair from a PKL bundle, then predicts RNA localization patterns using a trained XGBoost classifier.
 
 Supported pattern classes:
 
 ```text
-Nuclear
-Nuclear edge
-Cytoplasmic
-Cell edge
-Protrusion
-Radial
-Random
-Foci
+Nuclear, Nuclear edge, Cytoplasmic, Cell edge, Protrusion, Radial, Random, Foci
 ```
 
-The default prediction strategy is:
+Default prediction strategy:
+
+1. Use the primary 8-class XGBoost model.
+2. Calculate the proportion of predictions classified as Foci.
+3. If Foci ratio > 0.5, rerun prediction with the 7-class no-Foci model.
+4. Save the final result with the unified column name `pattern`.
+
+Use `--features-only` to compute features without pattern prediction.
+
+### 1.2 Pattern Prediction from Features (`subcellfeat-pattern`)
+
+A lightweight command for when features have already been computed. Takes a feature parquet file as input and applies the XGBoost classifier directly, skipping the expensive Bento/SPRAWL computation.
+
+### 1.3 Compartment Detection (`subcellfeat-compartment`)
+
+Detects subcellular transcriptomic compartments using RNA spatial distribution and embedding-based analysis. The pipeline samples transcript neighborhoods, computes RNAflux embeddings, and clusters them via SOM (Self-Organizing Map).
+
+Outputs (prefixed with `--out-prefix`):
 
 ```text
-Step 1: Use the primary 8-class XGBoost model.
-Step 2: Calculate the proportion of predictions classified as Foci.
-Step 3: If Foci ratio > 0.5, rerun prediction with the 7-class no-Foci model.
-Step 4: Save the final result with the unified column name pattern.
+{out_prefix}_sampled_batches.csv
+{out_prefix}_sampled_batches_meta.json
+{out_prefix}_{batch}_embedding.png
+{out_prefix}_{batch}_subdomain.png
 ```
 
-Default primary model:
+### 1.4 Colocalization Analysis (`subcellfeat-coloc`)
 
-```text
-models/multiclass_xgb_8class_prop075_final_from_cv.joblib
-```
+Identifies significant RNA-RNA colocalization relationships within cells. It runs InSTAnT Proximal Pairs (PP) and Conditional Probability of Barcodes (CPB) tests, filters for significance, and generates visualizations.
 
-Default fallback model:
+If the input data has no `z` column, the command automatically switches to 2D mode.
 
-```text
-models/multiclass_xgb_7class_no_foci_final_from_cv.joblib
-```
-
----
-
-### 1.2 Compartment Detection
-
-Command:
-
-```bash
-subcellfeat-compartment
-```
-
-This module detects subcellular transcriptomic compartments using RNA spatial distribution and embedding-based analysis. It supports sampled mode for large datasets.
-
-Typical outputs include:
-
-```text
-sampled_batches.csv
-sampled_batches_meta.json
-fluxmap plot
-embedding plot
-subdomain / compartment visualization
-```
-
----
-
-### 1.3 Colocalization Analysis
-
-Command:
-
-```bash
-subcellfeat-coloc
-```
-
-This module identifies significant RNA-RNA colocalization relationships within cells. It includes preprocessing, transcript filtering, pairwise colocalization scoring, significance filtering, and visualization.
-
-Typical outputs include:
+Outputs:
 
 ```text
 instant_significant_pairs.csv
+prefilter_summary.csv
 viz_cpb_heatmap_topN.png
 viz_coloc_network_styled.png
-prefilter_summary.csv
-top pair cell visualizations
 ```
 
 ---
 
 ## 2. Installation
 
-**Important:** This repository uses [Git LFS](https://git-lfs.com/) for model and data files. After cloning, you must run:
+### 2.1 Clone and pull data
+
+This repository uses [Git LFS](https://git-lfs.com/) for model and data files.
 
 ```bash
+git clone https://github.com/TingtingLiGroup/STRAND.git
+cd STRAND
 git lfs pull
 ```
 
-### 2.1 Recommended Conda/Mamba Installation
+### 2.2 Recommended Conda/Mamba Installation
 
 ```bash
 conda env create -f environment.yml
@@ -125,7 +88,7 @@ conda activate subcellular
 pip install -e .
 ```
 
-### 2.2 Pip Installation
+### 2.3 Pip Installation
 
 ```bash
 python -m venv .venv
@@ -134,7 +97,7 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### 2.3 GPU Acceleration (Optional)
+### 2.4 GPU Acceleration (Optional)
 
 The compartment detection module supports GPU acceleration via PyTorch. To enable it:
 
@@ -144,7 +107,7 @@ pip install -e ".[gpu]"
 
 Without PyTorch, compartment detection runs on CPU with NumPy (functionally identical, slower on large datasets).
 
-After installation, check whether the command-line tools are available:
+### 2.5 Verify Installation
 
 ```bash
 subcellfeat --help
@@ -232,7 +195,7 @@ If nuclear boundary is unavailable, it can be empty or missing. Some nucleus-rel
 
 ## 4. Quick Start
 
-### 4.1 Pattern Classification
+### 4.1 Pattern Classification (full pipeline)
 
 ```bash
 subcellfeat \
@@ -241,18 +204,45 @@ subcellfeat \
   --profile
 ```
 
-For large datasets, SPRAWL punctate and radial parameters can be reduced:
+For large datasets, use `--fast` to skip the two slowest SPRAWL features (punctate + radial):
 
 ```bash
 subcellfeat \
   --pkl data/simulated_data_dict.pkl \
-  --out Pattern/simulated_pattern.parquet \
-  --profile \
-  --sprawl-iterations 20 \
-  --sprawl-pairs 2
+  --out results/simulated_pattern.parquet \
+  --fast --profile
 ```
 
-### 4.2 Compartment Detection
+Or reduce SPRAWL approximation parameters:
+
+```bash
+subcellfeat \
+  --pkl data/simulated_data_dict.pkl \
+  --out results/simulated_pattern.parquet \
+  --sprawl-iterations 20 --sprawl-pairs 2 --profile
+```
+
+To compute features only (no pattern prediction):
+
+```bash
+subcellfeat \
+  --pkl data/simulated_data_dict.pkl \
+  --out results/simulated_features.parquet \
+  --features-only --profile
+```
+
+### 4.2 Pattern Prediction from Features
+
+If you already have a feature parquet from step 4.1 `--features-only`:
+
+```bash
+subcellfeat-pattern \
+  --input results/simulated_features.parquet \
+  --output results/simulated_pattern.parquet \
+  --profile
+```
+
+### 4.3 Compartment Detection
 
 ```bash
 subcellfeat-compartment \
@@ -264,7 +254,7 @@ subcellfeat-compartment \
   --profile
 ```
 
-### 4.3 Colocalization Analysis
+### 4.4 Colocalization Analysis
 
 ```bash
 subcellfeat-coloc \
@@ -273,6 +263,8 @@ subcellfeat-coloc \
   --use-2d \
   --profile
 ```
+
+Note: if the input PKL has no `z` column, `--use-2d` is applied automatically.
 
 ---
 
