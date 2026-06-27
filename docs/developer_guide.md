@@ -157,7 +157,6 @@ If feature columns or classes change, update:
 ```text
 tools/models/pattern_classifier.py
 docs/pattern_module.md
-models/README.md
 README.md
 ```
 

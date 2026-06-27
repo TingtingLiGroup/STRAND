@@ -42,10 +42,14 @@ def compute_sprawl_scores_from_pkl(
         df = data["data_df"]
         cell_boundary = data["cell_boundary"]
 
+    # boundary dict key 统一成 str，防止 int/str 不匹配导致静默全 NaN
+    cell_boundary = {str(k): v for k, v in (cell_boundary or {}).items()}
+    df[cell_id_col] = df[cell_id_col].astype(str)
+
     cells = []
     with timed("sprawl:build_cells_total", rep, print_each=profile):
         for cid, cell_df in df.groupby(cell_id_col, sort=False):
-            bxy = _boundary_to_xy(cell_boundary.get(cid))
+            bxy = _boundary_to_xy(cell_boundary.get(str(cid)))
             if bxy is None or len(bxy) < 3:
                 continue
 
@@ -61,6 +65,11 @@ def compute_sprawl_scores_from_pkl(
                     annotation="NA",
                 )
             )
+
+    if not cells:
+        empty = pd.DataFrame(columns=[f"sprawl_{m}" for m in metrics])
+        empty.index = pd.MultiIndex.from_tuples([], names=[cell_id_col, gene_col])
+        return empty
 
     wide = None
     with timed("sprawl:all_metrics_total", rep, print_each=profile):
