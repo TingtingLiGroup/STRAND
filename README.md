@@ -385,11 +385,38 @@ top pair cell plots
 ---
 
 
-## 7. Notes
+## 7. Security
+
+The toolbox uses Python `pickle` to load PKL input bundles. Pickle deserialization can execute arbitrary code. **Only load PKL files that you or your collaborators produced from trusted data sources.** Do not load PKL files from untrusted or unknown origins.
+
+---
+
+## 8. Notes
 
 1. The toolbox expects standardized PKL input.
 2. The main command-line tools use user-provided input and output paths.
 3. Large datasets should be processed with background execution.
 4. Pattern classification depends on trained XGBoost models stored in the `models/` directory.
 5. For reproducibility, keep the model files and the code version synchronized.
+
+---
+
+## 9. Citation
+
+If you use STRAND Tools in your research, please cite:
+
+> STRAND Tools: A command-line toolbox for subcellular spatial transcriptomics analysis.
+> https://github.com/TingtingLiGroup/STRAND
+
+---
+
+## 10. Contributing
+
+Contributions are welcome. Please open an issue or submit a pull request on [GitHub](https://github.com/TingtingLiGroup/STRAND/issues).
+
+---
+
+## 11. License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 

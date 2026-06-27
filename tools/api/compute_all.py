@@ -12,6 +12,7 @@ from shapely.geometry import Polygon
 from tools.engines.bento_adapter import compute_bento13_from_dict
 from tools.engines.sprawl_adapter import compute_sprawl_scores_from_pkl
 from tools.models.pattern_classifier import PatternClassifier
+from tools.api.patterns import _get_foci_ratio
 from tools.utils.timing import timed, TimerReport
 
 
@@ -458,9 +459,9 @@ def _prefilter_bundle_before_features(
 
     Order:
       1. Optional nc-ratio based cell filtering
-         - first removes quantile outliers
-         - then enforces mean nc_ratio into [nc_ratio_mean_low, nc_ratio_mean_high]
-           whenever possible.
+         - removes quantile outliers (q_low / q_high)
+         - reports whether mean nc_ratio falls in [nc_ratio_mean_low, nc_ratio_mean_high]
+           but does NOT enforce the mean range (enforce_mean_range=False by default).
       2. Optional cell-gene minimum transcript filtering.
          - each (cell, gene) must have at least min_transcripts transcript rows.
       3. Optional gene support filtering after cell-gene filtering.
@@ -747,21 +748,6 @@ def compute_all_from_pkl(
                 pass
 
 
-def _get_foci_ratio(pattern_df: pd.DataFrame, pattern_col: str = "pattern") -> float:
-    """
-    计算预测结果中 Foci 的占比。
-
-    返回：
-      - 如果 pattern 列存在：Foci 行数 / 总行数
-      - 如果结果为空或 pattern 列不存在：0.0
-    """
-    if pattern_df is None or len(pattern_df) == 0:
-        return 0.0
-
-    if pattern_col not in pattern_df.columns:
-        return 0.0
-
-    return float((pattern_df[pattern_col].astype(str) == "Foci").mean())
 
 def run_all_with_patterns(
     pkl_path: str,

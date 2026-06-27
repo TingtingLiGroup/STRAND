@@ -105,8 +105,13 @@ def main(argv=None):
         if str(args.figsize).lower() == "auto":
             figsize = "auto"
         else:
-            w, h = args.figsize.split(",")
-            figsize = (float(w), float(h))
+            parts = args.figsize.split(",")
+            if len(parts) != 2:
+                p.error(f'--figsize must be "auto" or "width,height" (e.g. "20,20"), got: {args.figsize}')
+            try:
+                figsize = (float(parts[0]), float(parts[1]))
+            except ValueError:
+                p.error(f'--figsize values must be numbers, got: {args.figsize}')
 
     n_clusters = args.n_clusters
     if isinstance(n_clusters, str) and n_clusters.lower() != "auto":
