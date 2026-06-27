@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from tools.api.compute_all import compute_all_from_pkl, run_all_with_patterns
+from tools.models.pattern_classifier import default_model_path
 
 
 def build_parser():
@@ -123,13 +124,13 @@ def build_parser():
         "--nc-ratio-mean-low",
         type=float,
         default=0.4,
-        help="nc ratio 过滤后目标均值下限，默认 0.4。",
+        help="nc ratio 过滤后均值报告下限（仅报告，不强制过滤），默认 0.4。",
     )
     p.add_argument(
         "--nc-ratio-mean-high",
         type=float,
         default=0.6,
-        help="nc ratio 过滤后目标均值上限，默认 0.6。",
+        help="nc ratio 过滤后均值报告上限（仅报告，不强制过滤），默认 0.6。",
     )
     p.add_argument(
         "--cellgene-filter-min-transcripts",
@@ -191,11 +192,14 @@ def main():
             prefilter_kwargs=prefilter_kwargs,
         )
     else:
-        root = Path(__file__).resolve().parents[2]
-        default_model = root / "models" / "multiclass_xgb_8class_prop075_final_from_cv.joblib"
-        default_fallback_model = root / "models" / "multiclass_xgb_7class_no_foci_final_from_cv.joblib"
-        model_path = Path(args.pattern_model) if args.pattern_model is not None else default_model
-        fallback_model_path = Path(args.fallback_pattern_model) if args.fallback_pattern_model is not None else default_fallback_model
+        model_path = (
+            Path(args.pattern_model) if args.pattern_model is not None
+            else default_model_path("multiclass_xgb_8class_prop075_final_from_cv.joblib")
+        )
+        fallback_model_path = (
+            Path(args.fallback_pattern_model) if args.fallback_pattern_model is not None
+            else default_model_path("multiclass_xgb_7class_no_foci_final_from_cv.joblib")
+        )
 
         run_all_with_patterns(
             pkl_path=args.pkl,

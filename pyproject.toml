@@ -73,7 +73,7 @@ subcellfeat-coloc = "tools.cli.colocalization:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["tools*"]
+include = ["tools*", "models*"]
 
 [tool.setuptools.package-data]
 tools = [
@@ -81,6 +81,9 @@ tools = [
 "**/*.json",
 "**/*.yaml",
 "**/*.yml",
+]
+models = [
+"*.joblib",
 ]
 
 [tool.pytest.ini_options]

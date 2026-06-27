@@ -120,7 +120,7 @@ def main(argv=None):
         except ValueError:
             raise ValueError("--n-clusters must be 'auto' or an integer")
 
-    return detect_compartments_from_pkl(
+    result = detect_compartments_from_pkl(
         pkl_path=args.pkl,
         out_prefix=args.out_prefix,
         batch_col=group_col,
@@ -143,6 +143,17 @@ def main(argv=None):
         subdomain_point_size=args.subdomain_point_size,
         same_cell_neighborhood=args.same_cell_neighborhood,
     )
+
+    import sys
+    batches = result.get("batches", [])
+    failed = [b for b in batches if b.get("status") == "failed"]
+    if failed and len(failed) == len(batches):
+        print(f"[compartment] ERROR: all {len(failed)} batches failed.", file=sys.stderr)
+        sys.exit(1)
+    elif failed:
+        print(f"[compartment] WARNING: {len(failed)}/{len(batches)} batches failed.", file=sys.stderr)
+
+    return result
 
 
 if __name__ == "__main__":
