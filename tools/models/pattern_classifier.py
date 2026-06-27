@@ -21,6 +21,19 @@ class PatternClassifier:
 
     def __init__(self, model_path: str | Path):
         model_path = Path(model_path)
+        if not model_path.exists():
+            raise FileNotFoundError(
+                f"Model file not found: {model_path}\n"
+                "If installed via git clone, run 'git lfs pull' to download model files."
+            )
+        # Detect Git LFS pointer (132-byte text stub instead of real binary)
+        with open(model_path, "rb") as f:
+            header = f.read(40)
+        if header.startswith(b"version https://git-lfs"):
+            raise RuntimeError(
+                f"Model file is a Git LFS pointer, not the actual binary: {model_path}\n"
+                "Run 'git lfs pull' in the repository root to download the real model files."
+            )
         obj = joblib.load(model_path)
 
         self.model_path = model_path

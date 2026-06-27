@@ -1,42 +1,37 @@
-import sys
+"""Integration test: full pipeline (Bento + SPRAWL) from PKL.
+
+Requires LFS data. Run with: pytest tests/test_all_from_pkl.py -s
+Skipped by default in CI (no LFS data).
+"""
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+PKL_PATH = ROOT / "data" / "Dataset1_merfish_u2os_data_dict.pkl"
 
-from tools.api.compute_all import compute_all_from_pkl
+needs_lfs = pytest.mark.skipif(
+    not PKL_PATH.exists() or PKL_PATH.stat().st_size < 1000,
+    reason="LFS data not pulled (run 'git lfs pull')",
+)
 
 
-def main():
-    pkl_path = "data/Dataset1_merfish_u2os_data_dict.pkl"
-
-    # Bento 这边你已经跑通过，可以不传参数；需要的话在这里加
-    bento_kwargs = {}
-
-    # Sprawl 这边很慢，先用你现在跑的配置
-    sprawl_kwargs = {
-        "metrics": ("peripheral", "central", "punctate", "radial"),
-        "processes": 1,
-        "num_iterations": 200,  # 你如果正在用1000，这里也可以改成1000（很慢）
-        "num_pairs": 4,
-    }
+@needs_lfs
+def test_compute_all_from_pkl():
+    from tools.api.compute_all import compute_all_from_pkl
 
     all_df = compute_all_from_pkl(
-        pkl_path,
-        bento_kwargs=bento_kwargs,
-        sprawl_kwargs=sprawl_kwargs,
-        out_path=None,   # 想写盘就填路径，比如 "data/all_features.parquet"
+        str(PKL_PATH),
+        sprawl_kwargs={
+            "metrics": ("peripheral", "central", "punctate", "radial"),
+            "processes": 1,
+            "num_iterations": 200,
+            "num_pairs": 4,
+        },
+        out_path=None,
     )
-
-    print("shape:", all_df.shape)
-    print("columns:", list(all_df.columns))
-    print(all_df.head())
-
-    # 期待至少包含 bento 13 + sprawl 4 => 17 列（如果 sprawl 未算完/缺失会少）
-    # 这里不写死等于17，避免你先跑快模式时失败；等你确认完整后再改成 assert == 17
-    assert all_df.shape[1] >= 13, "Should contain at least Bento 13 features."
-    print("✅ compute_all smoke test passed.")
-
-
-if __name__ == "__main__":
-    main()
+    # Bento 13 features + SPRAWL 4 features + cell + gene = at least 19 columns
+    assert all_df.shape[0] > 0, "Should produce at least one row"
+    assert all_df.shape[1] >= 13, "Should contain at least Bento 13 features"
+    assert "cell" in all_df.columns
+    assert "gene" in all_df.columns

@@ -9,7 +9,6 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import torch
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from scipy.interpolate import griddata
@@ -23,11 +22,27 @@ import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
+_torch = None  # lazy-loaded; None means "not attempted yet"
+
+def _get_torch():
+    """Lazy-import torch. Returns the module or None if unavailable."""
+    global _torch
+    if _torch is None:
+        try:
+            import torch
+            _torch = torch
+        except ImportError:
+            _torch = False  # mark as unavailable
+    return _torch if _torch is not False else None
+
 
 def _device_from_arg(device: Optional[str] = None):
+    torch = _get_torch()
+    if torch is None:
+        return "cpu"
     if device is not None and device != "auto":
         return torch.device(device)
-    return torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+    return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def _as_str_series(s: pd.Series) -> pd.Series:
@@ -204,20 +219,27 @@ def _compute_local_expression_vectors_notebook(
                 nearby_cells["cell"].astype(str) == str(cell_id)
             ]
 
+        torch = _get_torch()
         if nearby_cells.empty:
-            expression_vector = torch.zeros(num_genes, device=device)
+            expression_vector = (
+                torch.zeros(num_genes, device=device) if torch
+                else np.zeros(num_genes, dtype=np.float32)
+            )
         else:
             gene_count = nearby_cells["gene"].value_counts()
-            expression_vector = torch.tensor(
-                gene_count.reindex(unique_genes, fill_value=0).values,
-                device=device,
-                dtype=torch.float32,
-            )
+            vals = gene_count.reindex(unique_genes, fill_value=0).values.astype(np.float32)
+            if torch:
+                expression_vector = torch.tensor(vals, device=device, dtype=torch.float32)
+            else:
+                expression_vector = vals
             total = expression_vector.sum()
             if total > 0:
                 expression_vector = expression_vector / total
             else:
-                expression_vector = torch.zeros(num_genes, device=device)
+                expression_vector = (
+                    torch.zeros(num_genes, device=device) if torch
+                    else np.zeros(num_genes, dtype=np.float32)
+                )
         query_coords.append(point)
         expression_vectors.append(expression_vector)
         if profile and i % 10000 == 0:
@@ -227,15 +249,20 @@ def _compute_local_expression_vectors_notebook(
 
 
 def _compute_cell_vectors_notebook(df: pd.DataFrame, unique_genes: np.ndarray, device):
-    """Notebook-exact cell-level profile + torch.std."""
+    """Notebook-exact cell-level profile + std."""
+    torch = _get_torch()
     cell_vectors = []
     for _, group in df.groupby("cell"):
         gene_count = group["gene"].value_counts()
         cell_vector = gene_count.reindex(unique_genes, fill_value=0).values
         cell_vector = cell_vector / cell_vector.sum()
         cell_vectors.append(cell_vector)
-    cell_vectors = torch.tensor(cell_vectors, device=device)
-    std_dev = torch.std(cell_vectors, dim=0)
+    if torch:
+        cell_vectors = torch.tensor(cell_vectors, device=device)
+        std_dev = torch.std(cell_vectors, dim=0)
+    else:
+        cell_vectors = np.array(cell_vectors, dtype=np.float32)
+        std_dev = np.std(cell_vectors, axis=0, dtype=np.float32)
     return cell_vectors, std_dev
 
 
@@ -243,13 +270,14 @@ def _compute_rnaflux_loop_notebook(
     df: pd.DataFrame,
     unique_genes: np.ndarray,
     query_coords: List[np.ndarray],
-    expression_vectors: List[torch.Tensor],
+    expression_vectors: list,
     cell_ids: List[str],
-    std_dev: torch.Tensor,
+    std_dev,
     device,
     profile: bool = False,
 ):
     """Notebook-exact loop RNAflux embedding."""
+    torch = _get_torch()
     rnaflux_embeddings = []
     num = 1
     for i, query_coord in enumerate(query_coords):
@@ -260,11 +288,17 @@ def _compute_rnaflux_loop_notebook(
             .values
         )
         nearest_cell_vector = nearest_cell_vector / nearest_cell_vector.sum()
-        rnaflux_embedding = (
-            torch.tensor(expression_vectors[i], device=device).clone().detach()
-            - torch.tensor(nearest_cell_vector, device=device).clone().detach()
-        ) / std_dev
-        rnaflux_embeddings.append(rnaflux_embedding.cpu().numpy())
+        if torch:
+            rnaflux_embedding = (
+                torch.tensor(expression_vectors[i], device=device).clone().detach()
+                - torch.tensor(nearest_cell_vector, device=device).clone().detach()
+            ) / std_dev
+            rnaflux_embeddings.append(rnaflux_embedding.cpu().numpy())
+        else:
+            ev = np.asarray(expression_vectors[i], dtype=np.float32)
+            ncv = np.asarray(nearest_cell_vector, dtype=np.float32)
+            rnaflux_embedding = (ev - ncv) / std_dev
+            rnaflux_embeddings.append(rnaflux_embedding)
         if profile and num % 100 == 0:
             print(f"The grid_points is {num}/{len(query_coords)}.", flush=True)
         num += 1
@@ -275,9 +309,9 @@ def _compute_rnaflux_loop_notebook(
 def _compute_rnaflux_vectorized_cardiomyocytes(
     df: pd.DataFrame,
     unique_genes: np.ndarray,
-    expression_vectors: List[torch.Tensor],
+    expression_vectors: list,
     cell_ids: List[str],
-    std_dev: torch.Tensor,
+    std_dev,
 ):
     """Cardiomyocytes notebook vectorized implementation.
 

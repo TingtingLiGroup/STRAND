@@ -12,7 +12,7 @@ Recommended:
 
 ```bash
 conda env create -f environment.yml
-conda activate scfeature
+conda activate subcellular
 pip install -e . --no-deps
 ```
 
@@ -81,7 +81,7 @@ subcellfeat: command not found
 Check that the correct environment is activated:
 
 ```bash
-conda activate scfeature
+conda activate subcellular
 which python
 which pip
 which subcellfeat
