@@ -694,14 +694,17 @@ def plot_coloc_network(
 
         print("[viz] network layout: Graphviz sfdp")
 
-    except Exception as e:
-        raise RuntimeError(
-            "Graphviz sfdp layout failed. Install graphviz and pydot first\n"
-            "conda install -c conda-forge graphviz pydot -y\n"
-            "Then confirm with\n"
-            "which sfdp\n"
-            "which neato"
-        ) from e
+    except Exception:
+        print(
+            "[viz] WARNING: Graphviz sfdp not available, falling back to spring_layout.\n"
+            "For better layout, install: conda install -c conda-forge graphviz pydot -y"
+        )
+        import networkx as nx
+        pos = nx.spring_layout(G, seed=42, k=2.0 / max(1, len(G.nodes())) ** 0.5)
+        pos = {
+            k: np.array([float(v[0]), float(v[1])], dtype=float)
+            for k, v in pos.items()
+        }
 
     # ------------------------------------------------------------
     # 5) Normalize coordinates

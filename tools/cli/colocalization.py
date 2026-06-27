@@ -187,6 +187,18 @@ def main() -> None:
 
     save_matrices = bool(args.save_matrices or args.save_pp_pvals)
 
+    # Auto-detect 2D/3D: if user didn't pass --use-2d but PKL has no z column, auto-switch
+    use_3d = not args.use_2d
+    if use_3d:
+        import pickle
+        with open(args.pkl, "rb") as _f:
+            _bundle = pickle.load(_f)
+        if "z" not in _bundle["data_df"].columns:
+            print("[coloc] WARNING: z column not found in data_df, automatically switching to 2D mode.")
+            print("[coloc] To suppress this warning, pass --use-2d explicitly.")
+            use_3d = False
+        del _bundle
+
     out = run_colocalization_from_pkl(
         pkl_path=args.pkl,
         out_dir=args.out_dir,
@@ -195,7 +207,7 @@ def main() -> None:
         cpb_alpha=args.cpb_alpha,
         min_genecount=args.min_genecount,
         threads=args.threads,
-        use_3d=not args.use_2d,
+        use_3d=use_3d,
         precision_mode=args.precision_mode,
         profile=args.profile,
         max_cells=args.max_cells,

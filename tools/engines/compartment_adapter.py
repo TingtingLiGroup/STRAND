@@ -39,6 +39,11 @@ def _get_torch():
 def _device_from_arg(device: Optional[str] = None):
     torch = _get_torch()
     if torch is None:
+        if device is not None and device != "auto" and device != "cpu":
+            print(
+                f"[compartment] WARNING: --device {device} requested but torch is not installed. "
+                f"Falling back to CPU. Install torch for GPU: pip install strand-tools[gpu]"
+            )
         return "cpu"
     if device is not None and device != "auto":
         return torch.device(device)
@@ -76,6 +81,10 @@ def _attach_batch_from_coordinates(
             df[batch_col] = df[batch_col].fillna("batch0").astype(str)
             return df
 
+    print(
+        f"[compartment] WARNING: group column '{batch_col}' not found in data_df or coordinates. "
+        f"Treating all cells as a single group 'batch0'."
+    )
     df[batch_col] = "batch0"
     return df
 

@@ -7,7 +7,7 @@ This document describes recommended installation methods.
 ## 1. Recommended method with conda
 
 ```bash
-cd Subcellular_ToolBox
+cd STRAND
 conda env create -f environment.yml
 conda activate subcellular
 pip install -e . --no-deps
@@ -29,7 +29,7 @@ subcellfeat-coloc --help
 If your network is available and system dependencies are compatible:
 
 ```bash
-cd Subcellular_ToolBox
+cd STRAND
 pip install -e .
 ```
 

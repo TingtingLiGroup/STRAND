@@ -5,6 +5,23 @@ import joblib
 import pandas as pd
 import numpy as np
 
+_MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
+
+
+def default_model_path(filename: str = "multiclass_xgb_8class_prop075_final_from_cv.joblib") -> Path:
+    """Resolve default model path, works for both editable and wheel installs."""
+    p = _MODELS_DIR / filename
+    if p.exists():
+        return p
+    try:
+        from importlib.resources import files
+        p2 = Path(str(files("models").joinpath(filename)))
+        if p2.exists():
+            return p2
+    except Exception:
+        pass
+    return p
+
 
 class PatternClassifier:
     """

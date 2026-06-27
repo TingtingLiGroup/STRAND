@@ -101,8 +101,8 @@ Typical outputs include:
 
 ```text
 instant_significant_pairs.csv
-viz_cpb_heatmap.png
-viz_coloc_network.png
+viz_cpb_heatmap_topN.png
+viz_coloc_network_styled.png
 prefilter_summary.csv
 top pair cell visualizations
 ```
@@ -360,14 +360,13 @@ pattern
 
 ### 6.2 Compartment Output
 
-Typical outputs:
+Typical outputs (prefixed with `--out-prefix`):
 
 ```text
-sampled_batches.csv
-sampled_batches_meta.json
-fluxmap.png
-embedding.png
-subdomain visualization
+{out_prefix}_sampled_batches.csv
+{out_prefix}_sampled_batches_meta.json
+{out_prefix}_{batch}_embedding.png
+{out_prefix}_{batch}_subdomain.png
 ```
 
 ### 6.3 Colocalization Output
@@ -377,8 +376,8 @@ Typical outputs:
 ```text
 instant_significant_pairs.csv
 prefilter_summary.csv
-viz_cpb_heatmap.png
-viz_coloc_network.png
+viz_cpb_heatmap_topN.png
+viz_coloc_network_styled.png
 top pair cell plots
 ```
 

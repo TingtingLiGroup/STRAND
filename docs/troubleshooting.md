@@ -121,17 +121,17 @@ If running from another directory, use absolute or relative model parameters:
 
 ## 6. SPRAWL reports zero valid cells
 
-Error example:
+When no valid cells remain after filtering, SPRAWL returns an empty DataFrame
+(all SPRAWL feature columns will be NaN after merging). The log will show:
 
 ```text
 [SPRAWL] START metric=peripheral cells=0
-ValueError: No objects to concatenate
 ```
 
 Possible causes:
 
 1. Too few transcripts per cell-gene pair.
-2. Cell IDs do not match between `data_df` and boundaries.
+2. Cell IDs do not match between `data_df` and boundaries (type mismatch: str vs int).
 3. Filtering is too strict.
 4. Boundary data are missing or malformed.
 
