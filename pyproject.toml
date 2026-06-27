@@ -9,8 +9,24 @@ description = "STRAND: A command-line toolbox for subcellular spatial transcript
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [
+    { name = "TingtingLi Group" },
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 
-
+[project.urls]
+Homepage = "https://github.com/TingtingLiGroup/STRAND"
+Repository = "https://github.com/TingtingLiGroup/STRAND"
+Issues = "https://github.com/TingtingLiGroup/STRAND/issues"
 
 dependencies = [
     "numpy>=1.24,<2.0",
@@ -20,7 +36,6 @@ dependencies = [
     "xgboost>=1.7,<3.0",
     "joblib>=1.2",
     "matplotlib>=3.6,<3.10",
-    "seaborn>=0.12,<0.14",
     "tqdm>=4.60",
     "pyarrow>=10",
     "shapely>=2.0,<2.2",
@@ -29,7 +44,6 @@ dependencies = [
     "kneed>=0.8",
     "minisom>=2.3",
     "statsmodels>=0.13,<0.15",
-    "Pillow>=9,<11",
     "anndata>=0.9,<0.12",
     "astropy>=5,<7",
 ]
