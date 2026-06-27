@@ -1,10 +1,11 @@
-# Subcellular Feature Toolbox
+# STRAND Tools
 
-Subcellular Feature Toolbox is a command-line toolkit for subcellular spatial transcriptomics analysis. It provides three core modules for standardized PKL input data:
+STRAND (Subcellular Transcript RNA Architecture and Navigation Database) Tools is a command-line toolbox for subcellular spatial transcriptomics analysis. It provides four modules for standardized PKL input data:
 
-1. RNA localization pattern classification
-2. Subcellular compartment detection
-3. RNA colocalization analysis
+1. RNA localization pattern classification (`subcellfeat`)
+2. Pattern prediction from pre-computed features (`subcellfeat-pattern`)
+3. Subcellular compartment detection (`subcellfeat-compartment`)
+4. RNA colocalization analysis (`subcellfeat-coloc`)
 
 The toolbox is designed for molecule-resolved spatial transcriptomics datasets such as MERFISH, Xenium, CosMx, seqFISH, and other transcript-level spatial data.
 
@@ -110,6 +111,12 @@ top pair cell visualizations
 
 ## 2. Installation
 
+**Important:** This repository uses [Git LFS](https://git-lfs.com/) for model and data files. After cloning, you must run:
+
+```bash
+git lfs pull
+```
+
 ### 2.1 Recommended Conda/Mamba Installation
 
 ```bash
@@ -127,10 +134,21 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+### 2.3 GPU Acceleration (Optional)
+
+The compartment detection module supports GPU acceleration via PyTorch. To enable it:
+
+```bash
+pip install -e ".[gpu]"
+```
+
+Without PyTorch, compartment detection runs on CPU with NumPy (functionally identical, slower on large datasets).
+
 After installation, check whether the command-line tools are available:
 
 ```bash
 subcellfeat --help
+subcellfeat-pattern --help
 subcellfeat-compartment --help
 subcellfeat-coloc --help
 ```

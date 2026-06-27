@@ -325,7 +325,7 @@ def bundle_to_instant_dataframe(
     use_3d: bool = True,
 ) -> pd.DataFrame:
     """
-    Convert Subcellular Feature Toolbox standard PKL bundle to InSTAnT input table.
+    Convert STRAND Tools standard PKL bundle to InSTAnT input table.
 
     Your toolbox input format:
         bundle["data_df"] columns:

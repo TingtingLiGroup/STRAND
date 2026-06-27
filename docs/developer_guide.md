@@ -1,6 +1,6 @@
 # Developer Guide
 
-This document describes how to maintain and extend Subcellular ToolBox.
+This document describes how to maintain and extend STRAND Tools.
 
 ---
 
@@ -64,7 +64,7 @@ def main():
 For development:
 
 ```bash
-conda activate scfeature
+conda activate subcellular
 pip install -e . --no-deps --no-build-isolation
 ```
 

@@ -5,6 +5,10 @@ from pathlib import Path
 
 from tools.api import predict_patterns_from_parquet
 
+_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_MODEL = _ROOT / "models" / "multiclass_xgb_8class_prop075_final_from_cv.joblib"
+_DEFAULT_FALLBACK = _ROOT / "models" / "multiclass_xgb_7class_no_foci_final_from_cv.joblib"
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -20,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--model",
-        default="models/multiclass_xgb_8class_prop075_final_from_cv.joblib",
+        default=str(_DEFAULT_MODEL),
         help=(
             "primary 分类器 joblib 路径；默认使用强 8 类 XGBoost 模型 "
             "models/multiclass_xgb_8class_prop075_final_from_cv.joblib。"
@@ -29,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--fallback-model",
-        default="models/multiclass_xgb_7class_no_foci_final_from_cv.joblib",
+        default=str(_DEFAULT_FALLBACK),
         help=(
             "fallback 分类器 joblib 路径；默认使用 7 类 no-Foci XGBoost 模型 "
             "models/multiclass_xgb_7class_no_foci_final_from_cv.joblib。"

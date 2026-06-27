@@ -1,6 +1,6 @@
 # Input Format
 
-Subcellular ToolBox uses a standardized PKL bundle as input. The PKL file should be a Python dictionary containing transcript coordinates, cell boundaries, nuclear boundaries, and optional cell metadata.
+STRAND Tools uses a standardized PKL bundle as input. The PKL file should be a Python dictionary containing transcript coordinates, cell boundaries, nuclear boundaries, and optional cell metadata.
 
 ## 1. Required PKL structure
 
