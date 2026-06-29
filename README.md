@@ -1,6 +1,6 @@
 # STRAND Tools
 
-STRAND (Subcellular Transcript RNA Architecture and Navigation Database) Tools is a command-line toolbox for subcellular spatial transcriptomics analysis. It provides four commands for standardized PKL input data:
+STRAND (Subcellular-Resolved Transcriptome RNA Architecture and Navigation Database) Tools is a command-line toolbox for subcellular spatial transcriptomics analysis. It provides four commands for standardized PKL input data:
 
 | Command | Function |
 |---------|----------|
