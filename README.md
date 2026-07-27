@@ -368,8 +368,6 @@ Typical outputs (prefixed with `--out-prefix`):
 {out_prefix}_{batch}_subdomain.png
 ```
 
-The optimized backend writes `metadata.json`, memmapped work arrays under `work/`, and display-level CSV/PNG outputs under `results/`.
-
 ### 6.3 Colocalization Output
 
 Typical outputs:

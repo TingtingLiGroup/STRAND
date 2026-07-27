@@ -1404,7 +1404,7 @@ Top-pair图展示的是代表性细胞中的原始点和近邻关系。默认`pp
 subcellfeat-coloc-plot
 ```
 
-`pyproject.toml`已注册`subcellfeat-coloc-plot`；`subcellfeat-coloc-viz`保留为同一实现的兼容别名。也可以使用`python -m tools.cli.coloc_plot`直接调用模块。
+`pyproject.toml`已注册`subcellfeat-coloc-plot`。也可以使用`python -m tools.cli.coloc_plot`直接调用模块。
 
 独立重绘不会运行PP、CPB或区域注释。
 
@@ -1840,7 +1840,7 @@ float16可能把很小p值压到0或改变阈值附近比较。
 
 ### 21.20 控制台入口命名
 
-`pyproject.toml`注册了`subcellfeat-coloc-plot`、`subcellfeat-coloc-viz`和`subcellfeat-coloc-summary`。其中`subcellfeat-coloc-viz`是兼容别名，和`subcellfeat-coloc-plot`指向同一个`tools.cli.coloc_plot`入口。
+`pyproject.toml`注册了`subcellfeat-coloc-plot`和`subcellfeat-coloc-summary`。`subcellfeat-coloc-plot`对应`tools.cli.coloc_plot`入口。
 
 ### 21.21 正式自动Top-pair仍使用raw排序
 

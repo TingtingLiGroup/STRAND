@@ -50,10 +50,6 @@ Repository = "https://github.com/TingtingLiGroup/STRAND"
 Issues = "https://github.com/TingtingLiGroup/STRAND/issues"
 
 [project.optional-dependencies]
-gpu = [
-"torch>=2.0",
-]
-
 dev = [
 "pytest",
 "ipykernel",
@@ -72,7 +68,6 @@ subcellfeat-compartment = "tools.cli.compartments:main"
 subcellfeat-compartment-redisplay = "tools.cli.compartment_redisplay:main"
 subcellfeat-coloc = "tools.cli.colocalization:main"
 subcellfeat-coloc-plot = "tools.cli.coloc_plot:main"
-subcellfeat-coloc-viz = "tools.cli.coloc_plot:main"
 subcellfeat-coloc-summary = "tools.cli.coloc_summary:main"
 
 [tool.setuptools.packages.find]

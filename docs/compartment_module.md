@@ -171,8 +171,6 @@ cluster assignment tables
 
 When `--export-csv` is used, full transcript-level CSV files may be exported. These files can be very large.
 
-The optimized backend writes `metadata.json`, memmapped intermediate arrays under `work/`, and display-level compatible CSV/PNG files under `results/`.
-
 ---
 
 ## 6. Common issues
