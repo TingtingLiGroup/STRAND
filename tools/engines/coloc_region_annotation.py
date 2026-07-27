@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import islice
+from pathlib import Path
 from typing import Optional
 import math
+import os
+import pickle
+import time
 
 import numpy as np
 import pandas as pd
@@ -25,6 +30,24 @@ INSTANT_DISTANCE_THRESHOLD_NUCLEUS = 2.5
 INSTANT_DISTANCE_THRESHOLD_CYTO_NUCLEAR = 2.5
 INSTANT_DISTANCE_THRESHOLD_CYTO_PERI = 4.0
 _EPS = 1e-12
+REGION_CELL_BATCH_SIZE = 256
+REGION_CHECKPOINT_CELL_INTERVAL = 256
+REGION_PROGRESS_CELL_INTERVAL = 1000
+REGION_PROGRESS_TIME_INTERVAL_SECONDS = 30.0
+_REGION_PROCESS_CELL_WORKER = None
+
+
+def _initialize_region_process_worker(cell_worker) -> None:
+    """在fork子进程中保存继承的单细胞计算闭包，避免重复序列化大几何对象。"""
+    global _REGION_PROCESS_CELL_WORKER
+    _REGION_PROCESS_CELL_WORKER = cell_worker
+
+
+def _run_region_process_item(item: tuple[str, pd.DataFrame]) -> dict[int, dict[str, object]]:
+    """调用fork子进程继承的单细胞区域注释计算函数。"""
+    if _REGION_PROCESS_CELL_WORKER is None:
+        raise RuntimeError("Region process worker is not initialized.")
+    return _REGION_PROCESS_CELL_WORKER(item)
 
 
 @dataclass
@@ -301,24 +324,32 @@ def _instant_transcript_region_labels(
     if n == 0:
         return labels
 
-    in_nucleus = np.zeros(n, dtype=np.int8)
-    nuc_distance = np.full(n, np.nan, dtype=np.float64)
-    cyt_distance = np.full(n, np.nan, dtype=np.float64)
-
-    for k, (x, y) in enumerate(xy):
-        pt = Point(float(x), float(y))
-        try:
-            in_nucleus[k] = int(geom.nuclear.covers(pt))
-        except Exception:
-            in_nucleus[k] = 0
-        try:
-            nuc_distance[k] = float(pt.distance(geom.nuclear.boundary))
-        except Exception:
-            nuc_distance[k] = np.nan
-        try:
-            cyt_distance[k] = float(pt.distance(geom.cell.boundary))
-        except Exception:
-            cyt_distance[k] = np.nan
+    # Shapely 2 的向量化接口与逐点 GEOS 调用使用相同几何定义，但避免为
+    # 每条转录本创建 Python Point 对象，是大型数据集区域注释的主要加速点。
+    try:
+        points = shapely.points(xy)
+        in_nucleus = np.asarray(shapely.covers(geom.nuclear, points), dtype=np.int8)
+        nuc_distance = np.asarray(shapely.distance(points, geom.nuclear.boundary), dtype=np.float64)
+        cyt_distance = np.asarray(shapely.distance(points, geom.cell.boundary), dtype=np.float64)
+    except Exception:
+        # 保留原逐点路径作为异常几何的兼容回退，确保单个坏细胞不会中断全组。
+        in_nucleus = np.zeros(n, dtype=np.int8)
+        nuc_distance = np.full(n, np.nan, dtype=np.float64)
+        cyt_distance = np.full(n, np.nan, dtype=np.float64)
+        for transcript_index, (x, y) in enumerate(xy):
+            point = Point(float(x), float(y))
+            try:
+                in_nucleus[transcript_index] = int(geom.nuclear.covers(point))
+            except Exception:
+                in_nucleus[transcript_index] = 0
+            try:
+                nuc_distance[transcript_index] = float(point.distance(geom.nuclear.boundary))
+            except Exception:
+                nuc_distance[transcript_index] = np.nan
+            try:
+                cyt_distance[transcript_index] = float(point.distance(geom.cell.boundary))
+            except Exception:
+                cyt_distance[transcript_index] = np.nan
 
     valid_nuc = np.isfinite(nuc_distance)
     valid_cyt = np.isfinite(cyt_distance)
@@ -388,6 +419,8 @@ def annotate_colocalized_pairs_regions(
     max_pairs: Optional[int] = None,
     region_threshold_mode: str = "cell_scaled",
     region_workers: int = 1,
+    region_executor: str = "thread",
+    checkpoint_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Enrichment-only InSTAnT-style regional annotation for significant pairs.
@@ -410,12 +443,24 @@ def annotate_colocalized_pairs_regions(
         Default 1. Uses deterministic serial execution and is safest for large
         datasets. Values >1 use threads only, not extra processes, to avoid
         zombie/defunct worker processes and excessive memory duplication.
+
+    region_executor:
+        "thread" preserves the original threaded execution. "process" uses a
+        Linux fork pool and ordered result merging to bypass the Python GIL
+        without changing cell accumulation order.
+
+    checkpoint_path:
+        Optional pickle checkpoint. The function atomically saves accumulated
+        pair scores and the processed cell count, then resumes in the same cell
+        order after an interrupted run.
     """
     if significant_pairs is None or significant_pairs.empty:
         return _empty_region_table(significant_pairs)
 
     if region_threshold_mode not in {"absolute", "cell_scaled"}:
         raise ValueError("region_threshold_mode must be 'absolute' or 'cell_scaled'.")
+    if region_executor not in {"thread", "process"}:
+        raise ValueError("region_executor must be 'thread' or 'process'.")
 
     required = {"gene", "uID", "absX", "absY"}
     missing = required - set(instant_input_df.columns)
@@ -470,11 +515,44 @@ def annotate_colocalized_pairs_regions(
         for idx in pairs.index
     }
 
+    checkpoint_signature = {
+        "pair_keys": pair_keys,
+        "distance_threshold": float(distance_threshold),
+        "use_3d": bool(use_3d),
+        "region_threshold_mode": str(region_threshold_mode),
+    }
+
     coord_cols_dist = ["absX", "absY"]
     if use_3d and "absZ" in df.columns:
         coord_cols_dist = ["absX", "absY", "absZ"]
 
-    cell_items = [(str(cid), cdf.copy()) for cid, cdf in df.groupby("uID", sort=False)]
+    # 逐批生成细胞数据，避免为大型数据集一次性复制全部细胞 DataFrame。
+    cell_groups = df.groupby("uID", sort=False)
+    total_cells = int(cell_groups.ngroups)
+    processed_cells = 0
+    checkpoint_file = Path(checkpoint_path) if checkpoint_path else None
+    if checkpoint_file is not None and checkpoint_file.exists():
+        with checkpoint_file.open("rb") as checkpoint_handle:
+            checkpoint = pickle.load(checkpoint_handle)
+        if checkpoint.get("signature") != checkpoint_signature:
+            raise ValueError(f"Region checkpoint does not match current inputs: {checkpoint_file}")
+        if int(checkpoint.get("total_cells", -1)) != total_cells:
+            raise ValueError(f"Region checkpoint cell count does not match current inputs: {checkpoint_file}")
+        processed_cells = int(checkpoint.get("processed_cells", 0))
+        loaded_scores = checkpoint.get("score_template")
+        if not isinstance(loaded_scores, dict) or set(loaded_scores) != set(score_template):
+            raise ValueError(f"Region checkpoint score table is invalid: {checkpoint_file}")
+        score_template = loaded_scores
+        print(
+            f"[region_annotation] resumed checkpoint: {processed_cells}/{total_cells} cells from {checkpoint_file}",
+            flush=True,
+        )
+
+    if processed_cells < 0 or processed_cells > total_cells:
+        raise ValueError(f"Region checkpoint processed cell count is invalid: {processed_cells}/{total_cells}")
+
+    grouped_cell_items = ((str(cid), cdf.copy()) for cid, cdf in cell_groups)
+    cell_items = islice(grouped_cell_items, processed_cells, None)
 
     def _process_one_cell(item: tuple[str, pd.DataFrame]) -> dict[int, dict[str, object]]:
         cid, cdf = item
@@ -532,6 +610,16 @@ def annotate_colocalized_pairs_regions(
 
         coords_all = cdf[coord_cols_dist].to_numpy(dtype=np.float64)
         partial: dict[int, dict[str, object]] = {}
+        # 同一细胞内，一个基因可能参与多个显著基因对；KDTree 只需构建一次。
+        gene_tree_cache: dict[str, cKDTree] = {}
+
+        def _get_gene_tree(gene: str, gene_positions: np.ndarray) -> cKDTree:
+            """返回当前细胞内指定基因的缓存 KDTree。"""
+            tree = gene_tree_cache.get(gene)
+            if tree is None:
+                tree = cKDTree(coords_all[gene_positions])
+                gene_tree_cache[gene] = tree
+            return tree
 
         for g1, g2 in candidate_keys:
             idx1 = gene_to_pos.get(g1)
@@ -545,14 +633,14 @@ def annotate_colocalized_pairs_regions(
             labels2 = labels_all[idx2]
 
             if g1 == g2:
-                tree = cKDTree(coords1)
+                tree = _get_gene_tree(g1, idx1)
                 raw_pairs = list(tree.query_pairs(r=distance_threshold))
                 if not raw_pairs:
                     continue
                 i_idx = np.asarray([p[0] for p in raw_pairs], dtype=int)
                 j_idx = np.asarray([p[1] for p in raw_pairs], dtype=int)
             else:
-                tree2 = cKDTree(coords2)
+                tree2 = _get_gene_tree(g2, idx2)
                 hits = tree2.query_ball_point(coords1, r=distance_threshold)
                 if not any(hits):
                     continue
@@ -581,21 +669,99 @@ def annotate_colocalized_pairs_regions(
 
         return partial
 
-    # Deterministic merge order. region_workers=1 avoids extra worker overhead and
-    # is the recommended default for large boundary-heavy datasets.
-    if int(region_workers or 1) <= 1 or len(cell_items) <= 1:
-        partial_results = map(_process_one_cell, cell_items)
-    else:
-        from concurrent.futures import ThreadPoolExecutor
-        max_workers = max(1, int(region_workers))
-        with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            partial_results = list(ex.map(_process_one_cell, cell_items))
+    started_at = time.monotonic()
+    last_progress_at = started_at
+    resumed_cells = processed_cells
 
-    for partial in partial_results:
+    def _save_checkpoint() -> None:
+        """原子保存当前累计结果，避免中断留下半写入检查点。"""
+        if checkpoint_file is None:
+            return
+        checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary_checkpoint = checkpoint_file.with_name(f"{checkpoint_file.name}.tmp")
+        checkpoint_payload = {
+            "signature": checkpoint_signature,
+            "total_cells": total_cells,
+            "processed_cells": processed_cells,
+            "score_template": score_template,
+        }
+        with temporary_checkpoint.open("wb") as checkpoint_handle:
+            pickle.dump(checkpoint_payload, checkpoint_handle, protocol=pickle.HIGHEST_PROTOCOL)
+            checkpoint_handle.flush()
+            os.fsync(checkpoint_handle.fileno())
+        os.replace(temporary_checkpoint, checkpoint_file)
+
+    def _merge_partial(partial: dict[int, dict[str, object]]) -> None:
+        """按原细胞顺序合并单细胞结果，保持数值累加顺序不变。"""
         for idx, rec in partial.items():
             score_template[idx]["obs"] = score_template[idx]["obs"] + rec["obs"]
             score_template[idx]["exp"] = score_template[idx]["exp"] + rec["exp"]
             score_template[idx]["n_proximal_pairs"] = int(score_template[idx]["n_proximal_pairs"]) + int(rec["n_proximal_pairs"])
+
+    def _print_progress(*, force: bool = False) -> None:
+        """定期打印已处理细胞数、速度和预计剩余时间。"""
+        nonlocal last_progress_at
+        now = time.monotonic()
+        reached_cell_interval = processed_cells % REGION_PROGRESS_CELL_INTERVAL == 0
+        reached_time_interval = now - last_progress_at >= REGION_PROGRESS_TIME_INTERVAL_SECONDS
+        if not force and not reached_cell_interval and not reached_time_interval:
+            return
+        elapsed = max(now - started_at, _EPS)
+        processed_this_run = processed_cells - resumed_cells
+        speed = processed_this_run / elapsed
+        remaining = max(total_cells - processed_cells, 0)
+        eta_minutes = remaining / speed / 60.0 if speed > 0 else float("inf")
+        percent = processed_cells / total_cells * 100.0 if total_cells > 0 else 100.0
+        print(
+            f"[region_annotation] progress: {processed_cells}/{total_cells} cells "
+            f"({percent:.1f}%), elapsed={elapsed / 60.0:.1f} min, "
+            f"speed={speed:.2f} cells/s, ETA={eta_minutes:.1f} min",
+            flush=True,
+        )
+        last_progress_at = now
+
+    # 单线程逐细胞处理；并行模式按固定批次提交并按输入顺序合并。
+    # 分批只限制待处理对象数量，不改变每个细胞的计算或最终累加顺序。
+    max_workers = max(1, int(region_workers or 1))
+    if max_workers <= 1 or total_cells <= 1:
+        for item in cell_items:
+            _merge_partial(_process_one_cell(item))
+            processed_cells += 1
+            if processed_cells % REGION_CHECKPOINT_CELL_INTERVAL == 0:
+                _save_checkpoint()
+            _print_progress()
+    elif region_executor == "thread":
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            while True:
+                cell_batch = list(islice(cell_items, REGION_CELL_BATCH_SIZE))
+                if not cell_batch:
+                    break
+                for partial in executor.map(_process_one_cell, cell_batch):
+                    _merge_partial(partial)
+                    processed_cells += 1
+                    _print_progress()
+                _save_checkpoint()
+    else:
+        import multiprocessing as multiprocessing_module
+        fork_context = multiprocessing_module.get_context("fork")
+        with fork_context.Pool(
+            processes=max_workers,
+            initializer=_initialize_region_process_worker,
+            initargs=(_process_one_cell,),
+        ) as process_pool:
+            while True:
+                cell_batch = list(islice(cell_items, REGION_CELL_BATCH_SIZE))
+                if not cell_batch:
+                    break
+                for partial in process_pool.imap(_run_region_process_item, cell_batch, chunksize=1):
+                    _merge_partial(partial)
+                    processed_cells += 1
+                    _print_progress()
+                _save_checkpoint()
+
+    _save_checkpoint()
+    _print_progress(force=True)
 
     rows = []
     for idx, row in pairs.iterrows():

@@ -6,6 +6,8 @@ Command:
 
 ```bash
 subcellfeat-compartment
+subcellfeat-compartment-optimized
+subcellfeat-compartment-redisplay
 ```
 
 ---
@@ -27,7 +29,7 @@ Split by group, such as batch or fov
    ↓
 Sample transcripts by fraction
    ↓
-Construct local neighborhoods using radius search
+Construct same-cell local neighborhoods using radius search
    ↓
 Compute RNAflux-like local embedding
    ↓
@@ -47,7 +49,23 @@ subcellfeat-compartment \
   --pkl data/simulated_data_dict.pkl \
   --out-prefix results/simulated_compartment/simulateds \
   --frac 0.01 \
-  --radius 40 \
+  --radius auto \
+  --n-clusters auto \
+  --cluster-range-min 4 \
+  --cluster-range-max 7 \
+  --profile
+```
+
+Large low-memory global backend:
+
+```bash
+subcellfeat-compartment-optimized \
+  --pkl data/simulated_data_dict.pkl \
+  --out-dir results/simulated_compartment_optimized \
+  --group-col batch \
+  --display-col fov \
+  --frac 0.01 \
+  --radius 5 \
   --n-clusters auto \
   --profile
 ```
@@ -102,10 +120,10 @@ Radius for local neighborhood search.
 Example:
 
 ```bash
---radius 40
+--radius auto
 ```
 
-The value must match the coordinate unit. If coordinates are in pixels, radius is in pixels. If coordinates are in microns, radius is in microns.
+`auto` is resolved separately for the current computation group as one third of the mean cell radius from valid cell boundaries. A positive numeric radius is also accepted, and must match the coordinate unit.
 
 ### `--n-clusters`
 
@@ -130,8 +148,10 @@ If automatic clustering fails with a KneeLocator error, manually specify a clust
 Range used when `--n-clusters auto`.
 
 ```bash
---cluster-range-min 2 --cluster-range-max 12
+--cluster-range-min 4 --cluster-range-max 7
 ```
+
+The same-cell neighborhood is the default compartment semantics. The old `--same-cell-neighborhood` flag is kept for command compatibility.
 
 ### `--embedding-mode`
 
@@ -167,6 +187,8 @@ cluster assignment tables
 ```
 
 When `--export-csv` is used, full transcript-level CSV files may be exported. These files can be very large.
+
+The optimized backend writes `metadata.json`, memmapped intermediate arrays under `work/`, and display-level compatible CSV/PNG files under `results/`.
 
 ---
 

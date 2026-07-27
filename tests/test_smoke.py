@@ -1,4 +1,4 @@
-"""Smoke tests: import + CLI --help for all four entry points.
+"""Smoke tests: import + CLI --help for public entry points.
 
 No data files needed, runs in seconds, safe for CI.
 """
@@ -16,7 +16,13 @@ def test_import_api():
 
 
 def test_import_engines():
-    from tools.engines import bento_adapter, sprawl_adapter, instant_adapter
+    from tools.engines import (
+        bento_adapter,
+        compartment_redisplay,
+        compartment_same_cell_fast,
+        instant_adapter,
+        sprawl_adapter,
+    )
 
 
 def _run_help(cmd: str):
@@ -40,8 +46,24 @@ def test_cli_compartment_help():
     _run_help("tools.cli.compartments")
 
 
+def test_cli_compartment_optimized_help():
+    _run_help("tools.compartment_optimized.cli")
+
+
+def test_cli_compartment_redisplay_help():
+    _run_help("tools.cli.compartment_redisplay")
+
+
 def test_cli_coloc_help():
     _run_help("tools.cli.colocalization")
+
+
+def test_cli_coloc_plot_help():
+    _run_help("tools.cli.coloc_plot")
+
+
+def test_cli_coloc_summary_help():
+    _run_help("tools.cli.coloc_summary")
 
 
 def test_lfs_detection():
@@ -63,8 +85,8 @@ def test_lfs_detection():
             Path(f.name).unlink()
 
 
-def test_torch_optional():
-    """Compartment adapter should import without torch."""
+def test_compartment_device_cpu():
+    """Compartment adapter should resolve an explicit CPU device."""
     from tools.engines.compartment_adapter import _device_from_arg
     device = _device_from_arg("cpu")
     assert str(device) == "cpu"

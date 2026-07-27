@@ -15,7 +15,7 @@ def build_parser():
             "从 PKL bundle 计算 17 维特征（Bento13 + SPRAWL4），并进行 "
             "RNA 定位模式预测。默认先使用强 8 类 XGBoost 模型 "
             "multiclass_xgb_8class_prop075_final_from_cv.joblib；"
-            "如果预测结果中 Foci 占比 > 0.5，则自动切换为 7 类 no-Foci 模型重新预测。"
+            "当前默认不再进行 Foci fallback，始终保留 8 类 primary 预测结果。"
             "默认自动执行输入预处理：nc ratio 极端细胞过滤、cell-gene 低转录本过滤、"
             "gene 支持过滤和 cell 同步。"
         ),
@@ -79,21 +79,19 @@ def build_parser():
         "--fallback-pattern-model",
         default=None,
         help=(
-            "fallback 分类器 joblib 路径；默认使用 7 类 no-Foci XGBoost 模型 "
-            "models/multiclass_xgb_7class_no_foci_final_from_cv.joblib。"
-            "当 primary 预测中 Foci 占比超过阈值时启用。"
+            "历史兼容参数；当前 CLI 默认不再启用 Foci fallback。"
         ),
     )
     p.add_argument(
         "--foci-fallback-threshold",
         type=float,
         default=0.5,
-        help="当 primary 预测结果中 Foci 占比 > 该阈值时，自动切换 fallback 模型。默认 0.5。",
+        help="历史兼容参数；当前 CLI 默认不再按 Foci 占比自动切换 fallback。",
     )
     p.add_argument(
         "--no-foci-fallback",
         action="store_true",
-        help="关闭 Foci 占比过高时自动切换 7 分类模型的机制。",
+        help="历史兼容参数；当前 CLI 已默认关闭 Foci fallback。",
     )
 
     p.add_argument(
@@ -198,7 +196,7 @@ def main():
         )
         fallback_model_path = (
             Path(args.fallback_pattern_model) if args.fallback_pattern_model is not None
-            else default_model_path("multiclass_xgb_7class_no_foci_final_from_cv.joblib")
+            else None
         )
 
         run_all_with_patterns(
@@ -209,9 +207,9 @@ def main():
             profile=args.profile,
             max_cells=args.max_cells,
             prefilter_kwargs=prefilter_kwargs,
-            fallback_model_path=str(fallback_model_path),
+            fallback_model_path=str(fallback_model_path) if fallback_model_path is not None else None,
             foci_fallback_threshold=args.foci_fallback_threshold,
-            enable_foci_fallback=not args.no_foci_fallback,
+            enable_foci_fallback=False,
         )
 
 

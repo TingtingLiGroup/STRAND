@@ -13,8 +13,8 @@ from tools.api.compute_all import (
     _print_prefilter_stats,
     _limit_cells_in_bundle,
 )
-from tools.engines.instant_adapter import run_instant_colocalization_from_bundle
-from tools.engines.coloc_visualization import plot_coloc_outputs
+from tools.instant_optimized.adapter import run_optimized_colocalization_from_bundle
+from tools.instant_optimized.visualization import plot_optimized_coloc_outputs
 from tools.engines.coloc_region_annotation import annotate_colocalized_pairs_regions
 from tools.utils.timing import timed, TimerReport
 
@@ -156,7 +156,14 @@ def _save_matrix_outputs(
     np.save(out_dir / "instant_gene_counts.npy", result["gene_counts"])
 
     if save_pp_pvals:
-        np.save(out_dir / "instant_pp_pvals.npy", result["pp_pvals"])
+        pp_obj = result.get("pp_results", result.get("pp_pvals"))
+        pp_path = out_dir / "instant_pp_pvals.npy"
+        if hasattr(pp_obj, "save_dense_npy"):
+            # Sparse optimized backend: only materialize the full dense PP tensor
+            # when the user explicitly requests --save-pp-pvals.
+            pp_obj.save_dense_npy(pp_path)
+        else:
+            np.save(pp_path, pp_obj)
 
 def _save_intermediate_outputs(*, out_dir: Path, result: dict, save_intermediate: bool) -> tuple[Path | None, Path | None]:
     if not save_intermediate:
@@ -174,11 +181,8 @@ def _save_intermediate_outputs(*, out_dir: Path, result: dict, save_intermediate
 def _safe_group_name(x) -> str:
     import re
     x = str(x)
-    x = re.sub(r"[^\w\-]+", "_", x)
-    x = x.strip("_.")
-    if not x or x in (".", ".."):
-        return "unknown"
-    return x
+    x = re.sub(r"[^\w\-.]+", "_", x)
+    return x.strip("_") or "unknown"
 
 
 def _attach_groupby_from_coordinates(bundle: dict, groupby: str) -> dict:
@@ -477,6 +481,8 @@ def run_colocalization_from_pkl(
     sample_random_state: int = 42,
     sample_stratify_by: str | None = None,
     groupby: str | None = None,
+    group_values: list[str] | None = None,
+    skip_existing: bool = False,
 ) -> dict:
     """
     Full colocalization pipeline:
@@ -542,6 +548,7 @@ def run_colocalization_from_pkl(
         bundle = _attach_groupby_from_coordinates(bundle, groupby)
         data_df = bundle["data_df"].copy()
         data_df["cell"] = data_df["cell"].astype(str)
+
         group_cells = (
             data_df[["cell", groupby]]
             .dropna(subset=[groupby])
@@ -549,16 +556,74 @@ def run_colocalization_from_pkl(
             .groupby(groupby)["cell"]
             .apply(lambda x: sorted(set(x.astype(str))))
         )
+
+        # 只跑指定 group，例如：
+        #   --groupby celltype --groups Oligo Pvalb Sst
+        # 注意这里写的是原始 celltype 名称，不是文件夹安全化后的名字。
+        if group_values is not None:
+            target_groups = set(str(x) for x in group_values)
+            available_groups = set(str(x) for x in group_cells.index)
+
+            missing_groups = sorted(target_groups - available_groups)
+            if missing_groups:
+                print(
+                    f"[subcellfeat-coloc] warning: requested groups not found in {groupby!r}: "
+                    f"{missing_groups}",
+                    flush=True,
+                )
+
+            group_cells = group_cells[group_cells.index.astype(str).isin(target_groups)]
+
+            print(
+                f"[subcellfeat-coloc] selected {len(group_cells)} groups from --groups: "
+                f"{list(group_cells.index.astype(str))}",
+                flush=True,
+            )
+
         group_results = {}
         summary_rows = []
+
         for group_value, cells in group_cells.items():
             group_name = _safe_group_name(group_value)
             sub_out = out_dir / group_name
+            sub_out.mkdir(parents=True, exist_ok=True)
+
+            sig_path = sub_out / "instant_significant_pairs.csv"
+
+            # 如果该 group 已经有最终结果，就跳过，避免崩掉后从头重跑所有 celltype。
+            if skip_existing and sig_path.exists():
+                try:
+                    n_pairs = len(pd.read_csv(sig_path))
+                except Exception:
+                    n_pairs = -1
+
+                print(
+                    f"[subcellfeat-coloc] skip existing group {group_value!r}: {sig_path}",
+                    flush=True,
+                )
+
+                group_results[str(group_value)] = {
+                    "out_dir": sub_out,
+                    "pairs_path": sig_path,
+                    "skipped_existing": True,
+                }
+
+                summary_rows.append({
+                    "groupby": groupby,
+                    "group": group_value,
+                    "n_cells": len(cells),
+                    "n_significant_pairs": n_pairs,
+                    "out_dir": str(sub_out),
+                    "status": "skipped_existing",
+                })
+                continue
+
             sub_bundle = _subset_bundle_by_cells(bundle, set(cells))
             tmp_pkl = sub_out / "_tmp_group_bundle.pkl"
-            sub_out.mkdir(parents=True, exist_ok=True)
+
             with open(tmp_pkl, "wb") as f:
                 pickle.dump(sub_bundle, f)
+
             try:
                 sub_result = run_colocalization_from_pkl(
                     tmp_pkl,
@@ -598,6 +663,8 @@ def run_colocalization_from_pkl(
                     sample_random_state=sample_random_state,
                     sample_stratify_by=None,
                     groupby=None,
+                    group_values=None,
+                    skip_existing=False,
                 )
             finally:
                 if tmp_pkl.exists():
@@ -605,13 +672,23 @@ def run_colocalization_from_pkl(
                         tmp_pkl.unlink()
                     except Exception:
                         pass
+
             group_results[str(group_value)] = sub_result
             n_pairs = len(sub_result.get("significant_pairs", []))
-            summary_rows.append({"groupby": groupby, "group": group_value, "n_cells": len(cells), "n_significant_pairs": n_pairs, "out_dir": str(sub_out)})
+
+            summary_rows.append({
+                "groupby": groupby,
+                "group": group_value,
+                "n_cells": len(cells),
+                "n_significant_pairs": n_pairs,
+                "out_dir": str(sub_out),
+                "status": "done",
+            })
 
         summary = pd.DataFrame(summary_rows)
         summary_path = out_dir / f"groupby_{_safe_group_name(groupby)}_summary.csv"
         summary.to_csv(summary_path, index=False)
+
         return {
             "out_dir": out_dir,
             "groupby": groupby,
@@ -631,8 +708,9 @@ def run_colocalization_from_pkl(
         }
 
 
-    with timed("COLOC:run_instant_pp_cpb", rep, print_each=profile):
-        result = run_instant_colocalization_from_bundle(
+    with timed("COLOC:run_sparse_optimized_pp_cpb", rep, print_each=profile):
+        print("[subcellfeat-coloc] backend: sparse optimized InSTAnT PP/CPB", flush=True)
+        result = run_optimized_colocalization_from_bundle(
             bundle,
             distance_threshold=distance_threshold,
             pp_alpha=pp_alpha,
@@ -641,10 +719,7 @@ def run_colocalization_from_pkl(
             threads=threads,
             use_3d=use_3d,
             precision_mode=precision_mode,
-            tmp_dir=out_dir / "_tmp_instant_coloc",
-            keep_tmp=keep_tmp,
-            region_annotation=False,
-            region_max_pairs=None,
+            profile=profile,
         )
 
     with timed("COLOC:write_outputs", rep, print_each=profile):
@@ -768,7 +843,7 @@ def run_colocalization_from_pkl(
     viz_paths = {}
     if plot:
         with timed("COLOC:plot_outputs", rep, print_each=profile):
-            viz_paths = plot_coloc_outputs(
+            viz_paths = plot_optimized_coloc_outputs(
                 out_dir=out_dir,
                 pkl_path=pkl_path,
                 gene_list=result["gene_list"],
@@ -777,7 +852,7 @@ def run_colocalization_from_pkl(
                 region_annotated_pairs=region_df,
                 cpb_pvals=result["cpb_pvals"],
                 expected_coloc=result["expected_coloc"],
-                pp_pvals=result.get("pp_pvals"),
+                pp_results=result.get("pp_results"),
                 top_n_genes=viz_top_n_genes,
                 max_edges=viz_max_edges,
                 max_cells=viz_max_cells,

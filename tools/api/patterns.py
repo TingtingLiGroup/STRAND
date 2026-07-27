@@ -25,7 +25,7 @@ def predict_patterns_from_parquet(
     model_path: str | Path,
     fallback_model_path: str | Path | None = None,
     foci_fallback_threshold: float = 0.5,
-    enable_foci_fallback: bool = True,
+    enable_foci_fallback: bool = False,
     profile: bool = False,
 ):
     """
@@ -33,8 +33,8 @@ def predict_patterns_from_parquet(
 
     默认逻辑：
       1. 先使用 primary 强 8 分类模型预测。
-      2. 如果 Foci 占比 > foci_fallback_threshold，
-         则使用 fallback 7 分类 no-Foci 模型重新预测并替代结果。
+      2. 当前默认不再进行 Foci fallback；只有调用方显式传入
+         enable_foci_fallback=True 且提供 fallback_model_path 时，才会启用旧 fallback 逻辑。
       3. 最终类别列统一为 pattern。
     """
     df = pd.read_parquet(feature_path)

@@ -13,10 +13,10 @@ def detect_compartments_from_pkl(
     batch_col: str = "batch",
     only_batches: Optional[Union[str, Sequence[str]]] = None,
     frac: float = 0.01,
-    radius: float = 40,
+    radius: Union[str, float] = "auto",
     n_clusters: Union[str, int] = "auto",
-    cluster_range_min: int = 2,
-    cluster_range_max: int = 12,
+    cluster_range_min: int = 4,
+    cluster_range_max: int = 7,
     embedding_mode: str = "loop",
     som_iterations: int = 1000,
     som_sigma: float = 1.0,
@@ -28,7 +28,10 @@ def detect_compartments_from_pkl(
     figsize=None,
     embedding_point_size=10,
     subdomain_point_size=1,
-    same_cell_neighborhood: bool = False,
+    same_cell_neighborhood: bool = True,
+    display_col: Optional[str] = None,
+    som_chunk_size: int = 1_000_000,
+    output_csv_chunk_size: int = 250_000,
     **kwargs,
 ):
     return run_sampled_compartment_from_pkl(
@@ -53,4 +56,7 @@ def detect_compartments_from_pkl(
         embedding_point_size=embedding_point_size,
         subdomain_point_size=subdomain_point_size,
         same_cell_neighborhood=same_cell_neighborhood,
+        display_col=display_col,
+        som_chunk_size=som_chunk_size,
+        output_csv_chunk_size=output_csv_chunk_size,
     )

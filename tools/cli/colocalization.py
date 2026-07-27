@@ -166,6 +166,23 @@ def build_parser() -> argparse.ArgumentParser:
             "or in coordinates and will be merged by cell, e.g. --groupby celltype."
         ),
     )
+    parser.add_argument(
+        "--groups",
+        nargs="+",
+        default=None,
+        help=(
+            "When --groupby is set, run only these raw group values. "
+            "Values should match the original column values, not sanitized folder names."
+        ),
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help=(
+            "When --groupby is set, skip a group if instant_significant_pairs.csv "
+            "already exists in that group output directory."
+        ),
+    )
 
     return parser
 
@@ -237,6 +254,8 @@ def main() -> None:
         sample_random_state=args.sample_random_state,
         sample_stratify_by=args.sample_stratify_by,
         groupby=args.groupby,
+        group_values=args.groups,
+        skip_existing=args.skip_existing,
     )
 
     if out.get("groupby") is not None:

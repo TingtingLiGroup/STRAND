@@ -19,6 +19,8 @@ Check installation:
 subcellfeat --help
 subcellfeat-pattern --help
 subcellfeat-compartment --help
+subcellfeat-compartment-optimized --help
+subcellfeat-compartment-redisplay --help
 subcellfeat-coloc --help
 ```
 
@@ -56,4 +58,3 @@ which python
 which pip
 ```
 ---
-

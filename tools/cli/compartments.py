@@ -1,8 +1,40 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from tools.api.compartments import detect_compartments_from_pkl
+
+
+def _parse_radius(value):
+    """解析自动半径或正数绝对半径。
+
+    Parameters
+    ----------
+    value
+        命令行输入；``auto``表示按当前计算组细胞边界计算平均半径的三分之一。
+
+    Returns
+    -------
+    str or float
+        ``auto``或正浮点数半径。
+
+    Raises
+    ------
+    argparse.ArgumentTypeError
+        输入既不是``auto``也不是正数时抛出。
+    """
+
+    radius_text = str(value).strip()
+    if radius_text.lower() == "auto":
+        return "auto"
+    try:
+        radius_value = float(radius_text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("--radius must be 'auto' or a positive number") from error
+    if radius_value <= 0:
+        raise argparse.ArgumentTypeError("--radius must be greater than 0")
+    return radius_value
 
 
 def main(argv=None):
@@ -33,6 +65,14 @@ def main(argv=None):
         help=(
             "Comma-separated group values to run, e.g. 1 or 1,3,8. "
             "Works with --group-col."
+        ),
+    )
+    p.add_argument(
+        "--display-col",
+        default=None,
+        help=(
+            "After one global computation, split point-level CSV files and plots by this column. "
+            "Example: use --group-col batch --display-col tile for one dataset-wide model shown by tile."
         ),
     )
     # Backward-compatible old names.
@@ -67,19 +107,39 @@ def main(argv=None):
 
     # Main notebook parameters
     p.add_argument("--frac", type=float, default=0.01, help="Notebook sampling fraction: df.sample(frac=frac, random_state=42). Default: 0.01")
-    p.add_argument("--radius", type=float, default=40, help="Radius for cKDTree query_ball_point. Default: 40")
+    p.add_argument(
+        "--radius",
+        type=_parse_radius,
+        default="auto",
+        help=(
+            "Local radius. Default: auto, calculated as one third of the mean cell radius "
+            "from valid boundaries in the current computation group. A positive absolute value is also accepted."
+        ),
+    )
 
     # SOM / clustering
     p.add_argument("--n-clusters", default="auto", help="SOM clusters. Use 'auto' for KneeLocator over cluster range, or an integer like 4.")
-    p.add_argument("--cluster-range-min", type=int, default=2, help="Minimum k for auto SOM search. Default: 2")
-    p.add_argument("--cluster-range-max", type=int, default=12, help="Maximum k for auto SOM search. Default: 12")
+    p.add_argument("--cluster-range-min", type=int, default=4, help="Minimum k for auto SOM search. Default: 4")
+    p.add_argument("--cluster-range-max", type=int, default=7, help="Maximum k for auto SOM search. Default: 7")
     p.add_argument("--som-iterations", type=int, default=1000, help="MiniSom train iterations. Default: 1000")
     p.add_argument("--som-sigma", type=float, default=1.0, help="MiniSom sigma. Default: 1")
     p.add_argument("--som-learning-rate", type=float, default=0.5, help="MiniSom learning rate. Default: 0.5")
+    p.add_argument(
+        "--som-chunk-size",
+        type=int,
+        default=1_000_000,
+        help="Rows per exact-equivalent SOM quantization/winner chunk. Default: 1000000.",
+    )
+    p.add_argument(
+        "--output-csv-chunk-size",
+        type=int,
+        default=250_000,
+        help="Rows per point-level CSV write chunk. Default: 250000.",
+    )
 
     # Exact notebook loop by default; cardiomyocytes vectorized version optional
     p.add_argument("--embedding-mode", choices=["loop", "vectorized"], default="loop", help="loop = notebook exact; vectorized = cardiomyocytes accelerated implementation")
-    p.add_argument("--device", default="auto", help="Torch device: auto, cpu, cuda:0, cuda:3, etc. Default mimics notebook cuda:3 if available.")
+    p.add_argument("--device", default="auto", help="Torch device: auto, cpu, cuda:0, etc. Default uses cuda:0 if available, otherwise CPU.")
 
     p.add_argument("--dpi", type=int, default=300, help="Output PNG dpi. Default: 300")
     p.add_argument("--export-csv", action="store_true", help="Export full transcript CSV files like notebook. Can be huge.")
@@ -88,7 +148,11 @@ def main(argv=None):
     p.add_argument(
         "--same-cell-neighborhood",
         action="store_true",
-        help="Use only transcripts from the same cell when computing local RNAflux neighborhoods."
+        default=True,
+        help=(
+            "Deprecated compatibility flag. Local RNAflux neighborhoods and interpolation "
+            "are now always restricted to the same cell."
+        ),
     )
 
     args = p.parse_args(argv)
@@ -105,13 +169,8 @@ def main(argv=None):
         if str(args.figsize).lower() == "auto":
             figsize = "auto"
         else:
-            parts = args.figsize.split(",")
-            if len(parts) != 2:
-                p.error(f'--figsize must be "auto" or "width,height" (e.g. "20,20"), got: {args.figsize}')
-            try:
-                figsize = (float(parts[0]), float(parts[1]))
-            except ValueError:
-                p.error(f'--figsize values must be numbers, got: {args.figsize}')
+            w, h = args.figsize.split(",")
+            figsize = (float(w), float(h))
 
     n_clusters = args.n_clusters
     if isinstance(n_clusters, str) and n_clusters.lower() != "auto":
@@ -142,19 +201,20 @@ def main(argv=None):
         embedding_point_size=args.embedding_point_size,
         subdomain_point_size=args.subdomain_point_size,
         same_cell_neighborhood=args.same_cell_neighborhood,
+        display_col=args.display_col,
+        som_chunk_size=args.som_chunk_size,
+        output_csv_chunk_size=args.output_csv_chunk_size,
     )
 
-    import sys
     batches = result.get("batches", [])
-    failed = [b for b in batches if b.get("status") == "failed"]
+    failed = [batch for batch in batches if batch.get("status") == "failed"]
     if failed and len(failed) == len(batches):
         print(f"[compartment] ERROR: all {len(failed)} batches failed.", file=sys.stderr)
-        sys.exit(1)
-    elif failed:
+        return 1
+    if failed:
         print(f"[compartment] WARNING: {len(failed)}/{len(batches)} batches failed.", file=sys.stderr)
-
-    return result
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

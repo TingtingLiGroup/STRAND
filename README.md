@@ -7,7 +7,11 @@ STRAND (Subcellular-Resolved Spatial Transcriptome RNA Architecture and Navigati
 | `subcellfeat` | Full pipeline: compute 17 spatial features (Bento + SPRAWL) and predict RNA localization patterns |
 | `subcellfeat-pattern` | Predict patterns from pre-computed feature parquet (skip feature computation) |
 | `subcellfeat-compartment` | Detect subcellular transcriptomic compartments via RNAflux embedding + SOM clustering |
+| `subcellfeat-compartment-optimized` | Run the low-memory global same-cell RNAflux/SOM compartment backend |
+| `subcellfeat-compartment-redisplay` | Redraw compartment plots from existing point-level compartment CSV files |
 | `subcellfeat-coloc` | Identify significant RNA-RNA colocalization pairs via InSTAnT PP + CPB |
+| `subcellfeat-coloc-plot` | Redraw colocalization visualizations from an existing output directory |
+| `subcellfeat-coloc-summary` | Summarize colocalization outputs across groups or datasets |
 
 The toolbox is designed for molecule-resolved spatial transcriptomics datasets such as MERFISH, Xenium, CosMx, seqFISH, and other transcript-level spatial data.
 
@@ -28,9 +32,10 @@ Nuclear, Nuclear edge, Cytoplasmic, Cell edge, Protrusion, Radial, Random, Foci
 Default prediction strategy:
 
 1. Use the primary 8-class XGBoost model.
-2. Calculate the proportion of predictions classified as Foci.
-3. If Foci ratio > 0.5, rerun prediction with the 7-class no-Foci model.
-4. Save the final result with the unified column name `pattern`.
+2. Keep the primary 8-class output, including `Foci`.
+3. Save the final result with the unified column name `pattern`.
+
+The historical 7-class no-Foci model is retained only for explicit compatibility use in the Python API. The command-line defaults do not switch models based on Foci ratio.
 
 Use `--features-only` to compute features without pattern prediction.
 
@@ -40,7 +45,9 @@ A lightweight command for when features have already been computed. Takes a feat
 
 ### 1.3 Compartment Detection (`subcellfeat-compartment`)
 
-Detects subcellular transcriptomic compartments using RNA spatial distribution and embedding-based analysis. The pipeline samples transcript neighborhoods, computes RNAflux embeddings, and clusters them via SOM (Self-Organizing Map).
+Detects subcellular transcriptomic compartments using RNA spatial distribution and embedding-based analysis. The default workflow uses same-cell local RNAflux neighborhoods, `radius=auto` based on the current group's cell size, and SOM clustering over the default auto range `4..7`.
+
+For very large datasets, `subcellfeat-compartment-optimized` provides a low-memory global same-cell backend with Numba cell indexing, memmapped RNAflux/RGB arrays, chunked SOM assignment, and display-column output splitting.
 
 Outputs (prefixed with `--out-prefix`):
 
@@ -97,15 +104,14 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-### 2.4 GPU Acceleration (Optional)
+### 2.4 Compartment Runtime
 
-The compartment detection module supports GPU acceleration via PyTorch. To enable it:
+The compartment detection module uses PyTorch and Numba. `--device auto` uses `cuda:0` when a CUDA device is available, otherwise CPU.
 
 ```bash
-pip install -e ".[gpu]"
+subcellfeat-compartment --help
+subcellfeat-compartment-optimized --help
 ```
-
-Without PyTorch, compartment detection runs on CPU with NumPy (functionally identical, slower on large datasets).
 
 ### 2.5 Verify Installation
 
@@ -113,7 +119,11 @@ Without PyTorch, compartment detection runs on CPU with NumPy (functionally iden
 subcellfeat --help
 subcellfeat-pattern --help
 subcellfeat-compartment --help
+subcellfeat-compartment-optimized --help
+subcellfeat-compartment-redisplay --help
 subcellfeat-coloc --help
+subcellfeat-coloc-plot --help
+subcellfeat-coloc-summary --help
 ```
 
 ---
@@ -249,7 +259,23 @@ subcellfeat-compartment \
   --pkl data/simulated_data_dict.pkl \
   --out-prefix results/simulated_compartment \
   --frac 0.01 \
-  --radius 40 \
+  --radius auto \
+  --n-clusters auto \
+  --cluster-range-min 4 \
+  --cluster-range-max 7 \
+  --profile
+```
+
+Large low-memory backend:
+
+```bash
+subcellfeat-compartment-optimized \
+  --pkl data/simulated_data_dict.pkl \
+  --out-dir results/simulated_compartment_optimized \
+  --group-col batch \
+  --display-col fov \
+  --frac 0.01 \
+  --radius 5 \
   --n-clusters auto \
   --profile
 ```
@@ -361,6 +387,8 @@ Typical outputs (prefixed with `--out-prefix`):
 {out_prefix}_{batch}_subdomain.png
 ```
 
+The optimized backend writes `metadata.json`, memmapped work arrays under `work/`, and display-level CSV/PNG outputs under `results/`.
+
 ### 6.3 Colocalization Output
 
 Typical outputs:
@@ -410,4 +438,3 @@ Contributions are welcome. Please open an issue or submit a pull request on [Git
 ## 11. License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-

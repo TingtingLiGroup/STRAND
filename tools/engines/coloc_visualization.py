@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pickle
+from functools import lru_cache
 import re
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,26 @@ from matplotlib.lines import Line2D
 import networkx as nx
 from scipy.spatial.distance import cdist
 from scipy.spatial import cKDTree
+
+
+plt.rcParams["svg.fonttype"] = "none"
+plt.rcParams["pdf.fonttype"] = 42
+plt.rcParams["font.family"] = "Arial"
+
+_TOP_PAIR_PLOT_WORKER = None
+
+
+def _initialize_top_pair_plot_worker(plot_worker) -> None:
+    """在fork子进程中保存继承的单个Top基因对绘图闭包。"""
+    global _TOP_PAIR_PLOT_WORKER
+    _TOP_PAIR_PLOT_WORKER = plot_worker
+
+
+def _run_top_pair_plot_task(task):
+    """调用fork子进程继承的Top基因对绘图函数。"""
+    if _TOP_PAIR_PLOT_WORKER is None:
+        raise RuntimeError("Top-pair plot worker is not initialized.")
+    return _TOP_PAIR_PLOT_WORKER(task)
 
 
 # -----------------------------------------------------------------------------
@@ -47,6 +68,28 @@ def _safe_neglog10(p):
 
     p = np.where((p <= 0) | (~np.isfinite(p)), floor, p)
     return -np.log10(p)
+
+
+def _rank_pairs_for_visualization(pairs: pd.DataFrame, limit: int) -> pd.DataFrame:
+    """按有效CPB显著性和显著细胞支持度稳定选择可视化基因对。"""
+    ranked = pairs.copy()
+    ranked["cpb_pvalue"] = pd.to_numeric(ranked["cpb_pvalue"], errors="coerce").fillna(1.0).clip(0.0, 1.0)
+    ranked["n_cells_pp_significant"] = pd.to_numeric(
+        ranked.get("n_cells_pp_significant", 0),
+        errors="coerce",
+    ).fillna(0)
+    ranked["expected_coloc"] = pd.to_numeric(
+        ranked.get("expected_coloc", 0),
+        errors="coerce",
+    ).fillna(0.0)
+    ranked["gene_1"] = ranked["gene_1"].astype(str)
+    ranked["gene_2"] = ranked["gene_2"].astype(str)
+    # cpb_pvalue_raw 可能包含约1e-13的负浮点误差，不能用于显著性排序。
+    return ranked.sort_values(
+        ["cpb_pvalue", "n_cells_pp_significant", "expected_coloc", "gene_1", "gene_2"],
+        ascending=[True, False, False, True, True],
+        kind="mergesort",
+    ).head(int(limit)).reset_index(drop=True)
 
 
 def _load_gene_list(out_dir: Path) -> list[str]:
@@ -168,7 +211,7 @@ def plot_cpb_heatmap(
 
     fig.tight_layout()
     save_path = out_dir / f"viz_cpb_heatmap_top{len(genes_plot)}.png"
-    fig.savefig(save_path, dpi=300)
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
     return save_path
 
@@ -609,15 +652,18 @@ def plot_coloc_network(
         .str.lower()
     )
 
-    # Use raw p-value for ranking, because clipped p-values may tie.
-    df = df.sort_values("cpb_pvalue_raw", ascending=True).head(int(max_edges)).reset_index(drop=True)
+    # 使用有效p值排序；大量p值为0时，以显著细胞数和期望共定位数作为稳定支持度排序。
+    df = _rank_pairs_for_visualization(df, int(max_edges))
 
     # Formal -log10 value, mainly for record/debugging.
     df["neglog10_p"] = _safe_neglog10(df["cpb_pvalue"].values)
 
-    # Old rank-based edge strength logic.
-    # Strongest displayed edge = 1.0; weakest displayed edge = 0.0.
-    if len(df) > 1:
+    # 边宽表示显著细胞支持数；对数变换避免最高支持边完全压制其余边。
+    support = np.log1p(df["n_cells_pp_significant"].to_numpy(dtype=float))
+    support_span = float(np.nanmax(support) - np.nanmin(support)) if len(support) else 0.0
+    if support_span > 0:
+        df["edge_strength"] = (support - np.nanmin(support)) / support_span
+    elif len(df) > 1:
         df["edge_strength"] = 1.0 - np.arange(len(df), dtype=float) / (len(df) - 1)
     else:
         df["edge_strength"] = 1.0
@@ -662,6 +708,7 @@ def plot_coloc_network(
             layout_weight=float(row["layout_weight"]),
             dominant_region=region,
             edge_color=color,
+            n_cells_pp_significant=float(row["n_cells_pp_significant"]),
         )
 
     if G.number_of_nodes() == 0:
@@ -694,16 +741,35 @@ def plot_coloc_network(
 
         print("[viz] network layout: Graphviz sfdp")
 
-    except Exception:
+    except Exception as error:
+        # Graphviz 是可选依赖；缺失时使用固定随机种子的 NetworkX 布局，
+        # 保证网络图仍可生成，并避免阻断后续 top-pair 空间图。
         print(
-            "[viz] WARNING: Graphviz sfdp not available, falling back to spring_layout.\n"
-            "For better layout, install: conda install -c conda-forge graphviz pydot -y"
+            "[viz] Graphviz sfdp unavailable; "
+            f"falling back to NetworkX spring_layout: {error}"
         )
-        pos = nx.spring_layout(G, seed=42, k=2.0 / max(1, len(G.nodes())) ** 0.5)
-        pos = {
-            k: np.array([float(v[0]), float(v[1])], dtype=float)
-            for k, v in pos.items()
-        }
+        # 分组件布局后紧凑排列，避免小型真实组件被甩到画布远端。
+        pos = {}
+        x_cursor = 0.0
+        components = sorted(nx.connected_components(G), key=len, reverse=True)
+        for component_index, component_nodes in enumerate(components):
+            component_graph = G.subgraph(component_nodes).copy()
+            component_pos = nx.spring_layout(
+                component_graph,
+                seed=int(seed) + component_index,
+                weight="layout_weight",
+                iterations=300,
+            )
+            component_names = list(component_graph.nodes())
+            component_coords = np.asarray([component_pos[node] for node in component_names], dtype=float)
+            component_coords -= component_coords.mean(axis=0, keepdims=True)
+            component_scale = max(1.4, np.sqrt(len(component_names)) * 0.55)
+            component_coords *= component_scale
+            component_coords[:, 0] -= component_coords[:, 0].min()
+            component_coords[:, 0] += x_cursor
+            component_width = float(np.ptp(component_coords[:, 0])) if len(component_coords) > 1 else 0.8
+            x_cursor += component_width + 1.4
+            pos.update({node: component_coords[index] for index, node in enumerate(component_names)})
 
     # ------------------------------------------------------------
     # 5) Normalize coordinates
@@ -854,7 +920,7 @@ def plot_coloc_network(
 
     ax.set_title(
         f"Global d-colocalized gene-pair network\n"
-        f"Top {G.number_of_edges()} CPB-significant edges",
+        f"Top {G.number_of_edges()} supported CPB-significant edges",
         fontsize=15,
         pad=14,
     )
@@ -921,7 +987,7 @@ def plot_coloc_network(
         ax.text(
             1.01,
             0.80,
-            "Edge width: significance",
+            "Edge width: significant-cell support",
             transform=ax.transAxes,
             ha="left",
             va="top",
@@ -932,7 +998,9 @@ def plot_coloc_network(
     fig.tight_layout()
 
     save_path = out_dir / "viz_coloc_network_styled.png"
-    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    fig.savefig(save_path, dpi=600, bbox_inches="tight")
+    fig.savefig(save_path.with_suffix(".pdf"), bbox_inches="tight")
+    fig.savefig(save_path.with_suffix(".svg"), bbox_inches="tight")
     plt.close(fig)
 
     return save_path
@@ -967,7 +1035,9 @@ def _boundary_to_xy(boundary):
     return xy[:, :2].astype(float)
 
 
+@lru_cache(maxsize=2)
 def _load_boundaries_from_pkl(pkl_path: str | Path | None):
+    """读取并缓存细胞边界，避免每张 top-pair 图重复加载大型 PKL。"""
     if pkl_path is None:
         return {}, {}
     with open(pkl_path, "rb") as f:
@@ -1151,7 +1221,8 @@ def plot_top_pair_cells(
             raise FileNotFoundError(f"Cannot find: {input_path}")
         df = pd.read_csv(input_path)
     else:
-        df = instant_input_df.copy()
+        # 调用方可能传入上亿行坐标表；这里只读使用，避免每个基因对重复整表复制。
+        df = instant_input_df
 
     required = {"gene", "absX", "absY", "uID"}
     missing = required - set(df.columns)
@@ -1180,6 +1251,7 @@ def plot_top_pair_cells(
 
     gene_1 = str(gene_1)
     gene_2 = str(gene_2)
+
     cell_boundary, nuclear_boundary = _load_boundaries_from_pkl(pkl_path)
 
     sub = df[df["gene"].astype(str).isin([gene_1, gene_2])].copy()
@@ -1408,14 +1480,23 @@ def plot_coloc_outputs(
             top_paths.append(str(p))
 
     elif make_top_pairs and not pairs.empty:
-        sort_col = "cpb_pvalue_raw" if "cpb_pvalue_raw" in pairs.columns else "cpb_pvalue"
-        pairs = pairs.sort_values(sort_col, ascending=True).reset_index(drop=True).head(int(top_pairs))
+        pairs = _rank_pairs_for_visualization(pairs, int(top_pairs))
+        top_pair_input_df = instant_input_df
+        if instant_input_df is not None:
+            # 一次筛出全部Top基因，避免每张图重复扫描完整转录本坐标表。
+            top_gene_names = set(pairs["gene_1"].astype(str)).union(set(pairs["gene_2"].astype(str)))
+            gene_values = instant_input_df["gene"].astype(str)
+            top_pair_input_df = instant_input_df.loc[gene_values.isin(top_gene_names)].copy()
 
-        for rank, (_, row) in enumerate(pairs.iterrows(), start=1):
-            p = plot_top_pair_cells(
+        plot_tasks = [(rank, row.to_dict()) for rank, (_, row) in enumerate(pairs.iterrows(), start=1)]
+
+        def _plot_one_top_pair(task):
+            """绘制一个已排序的Top基因对，并返回保存路径。"""
+            rank, row = task
+            return plot_top_pair_cells(
                 out_dir,
                 pkl_path=pkl_path,
-                instant_input_df=instant_input_df,
+                instant_input_df=top_pair_input_df,
                 significant_pairs=pairs,
                 gene_list=gene_list,
                 pp_pvals=pp_pvals,
@@ -1427,6 +1508,22 @@ def plot_coloc_outputs(
                 cell_selection=cell_selection,
                 rank=rank,
             )
+
+        if len(plot_tasks) > 1 and pkl_path is not None:
+            # 父进程先加载一次边界；fork子进程共享只读缓存和筛选后的坐标小表。
+            _load_boundaries_from_pkl(pkl_path)
+            import multiprocessing as multiprocessing_module
+            fork_context = multiprocessing_module.get_context("fork")
+            with fork_context.Pool(
+                processes=min(4, len(plot_tasks)),
+                initializer=_initialize_top_pair_plot_worker,
+                initargs=(_plot_one_top_pair,),
+            ) as plot_pool:
+                plotted_paths = plot_pool.map(_run_top_pair_plot_task, plot_tasks, chunksize=1)
+        else:
+            plotted_paths = [_plot_one_top_pair(task) for task in plot_tasks]
+
+        for p in plotted_paths:
             if p is not None:
                 top_paths.append(str(p))
 

@@ -7,15 +7,14 @@ from tools.api import predict_patterns_from_parquet
 from tools.models.pattern_classifier import default_model_path
 
 _DEFAULT_MODEL = default_model_path("multiclass_xgb_8class_prop075_final_from_cv.joblib")
-_DEFAULT_FALLBACK = default_model_path("multiclass_xgb_7class_no_foci_final_from_cv.joblib")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Predict RNA localization patterns from a feature parquet. "
-            "Default: primary strong 8-class XGBoost model; "
-            "fallback to 7-class no-Foci model when Foci ratio > threshold."
+            "Default: primary strong 8-class XGBoost model only; "
+            "Foci fallback is disabled."
         )
     )
 
@@ -33,10 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--fallback-model",
-        default=str(_DEFAULT_FALLBACK),
+        default=None,
         help=(
-            "fallback 分类器 joblib 路径；默认使用 7 类 no-Foci XGBoost 模型 "
-            "models/multiclass_xgb_7class_no_foci_final_from_cv.joblib。"
+            "历史兼容参数；当前 CLI 默认不再启用 Foci fallback。"
         ),
     )
 
@@ -44,19 +42,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--foci-fallback-threshold",
         type=float,
         default=0.5,
-        help="当 primary 预测中 Foci 占比 > 该阈值时，自动切换 fallback 模型。默认 0.5。",
+        help="历史兼容参数；当前 CLI 默认不再按 Foci 占比自动切换 fallback。",
     )
 
     parser.add_argument(
         "--no-foci-fallback",
         action="store_true",
-        help="关闭 Foci 占比过高时自动切换 7 分类模型的机制。",
+        help="历史兼容参数；当前 CLI 已默认关闭 Foci fallback。",
     )
 
     parser.add_argument(
         "--profile",
         action="store_true",
-        help="输出 primary / fallback 的 pattern 分布。",
+        help="输出 primary pattern 分布和 fallback 状态。",
     )
 
     return parser
@@ -69,9 +67,9 @@ def main():
     out = predict_patterns_from_parquet(
         feature_path=Path(args.input),
         model_path=Path(args.model),
-        fallback_model_path=Path(args.fallback_model),
+        fallback_model_path=Path(args.fallback_model) if args.fallback_model is not None else None,
         foci_fallback_threshold=args.foci_fallback_threshold,
-        enable_foci_fallback=not args.no_foci_fallback,
+        enable_foci_fallback=False,
         profile=args.profile,
         output_path=Path(args.output),
     )

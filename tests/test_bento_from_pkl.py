@@ -3,15 +3,17 @@
 Requires LFS data. Skipped by default in CI.
 """
 from pathlib import Path
+import os
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 PKL_PATH = ROOT / "data" / "Dataset1_merfish_u2os_data_dict.pkl"
+RUN_DATA_TESTS = os.environ.get("STRAND_RUN_DATA_TESTS") == "1"
 
 needs_lfs = pytest.mark.skipif(
-    not PKL_PATH.exists() or PKL_PATH.stat().st_size < 1000,
-    reason="LFS data not pulled (run 'git lfs pull')",
+    not RUN_DATA_TESTS or not PKL_PATH.exists() or PKL_PATH.stat().st_size < 1000,
+    reason="data integration test disabled; set STRAND_RUN_DATA_TESTS=1 after 'git lfs pull'",
 )
 
 

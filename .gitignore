@@ -13,12 +13,23 @@ dist/
 
 logs/
 nohup.out
+wget-log
 Pattern/
 Compartment/
+Compartment_Optimized/
 Colocalization/
 RNApatterns/
 results/
 Dataset/
+notebooks/
+InSTAnT-main/
+PLAN.md
+tmp/
+.pytest_cache/
+
+tools/.cursor/
+tools/instant_optimized/cross_dataset_validate.py
+tools/instant_core/*.bak*
 
 .venv/
 env/

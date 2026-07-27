@@ -1049,7 +1049,10 @@ class Instant():
 
         # PP is one task per valid cell. Reusing workers is much faster than
         # maxtasksperchild=1, especially for thousands of cells.
-        chunksize = max(1, min(128, len(valid_cell_data) // max(self.threads * 8, 1)))
+        n_genes = len(self.geneList)
+        bytes_per_cell = (n_genes * n_genes + n_genes) * np.dtype(self.precision_mode).itemsize
+        target_chunk_bytes = 32 * 1024 * 1024
+        chunksize = max(1, min(16, int(target_chunk_bytes / max(bytes_per_cell, 1))))
         print(f"PP multiprocessing chunksize={chunksize}")
 
         done = 0
@@ -1203,7 +1206,10 @@ class Instant():
         pp_bytes = np.prod(self.all_pval.shape) * np.dtype(self.all_pval.dtype).itemsize
         print(f"Estimated dense PP-3D tensor memory: {pp_bytes / (1024 ** 3):.2f} GB")
 
-        chunksize = max(1, min(128, len(valid_cell_data) // max(self.threads * 8, 1)))
+        n_genes = len(self.geneList)
+        bytes_per_cell = (n_genes * n_genes + n_genes) * np.dtype(self.precision_mode).itemsize
+        target_chunk_bytes = 32 * 1024 * 1024
+        chunksize = max(1, min(16, int(target_chunk_bytes / max(bytes_per_cell, 1))))
         print(f"PP-3D multiprocessing chunksize={chunksize}")
 
         # with mp.Pool(

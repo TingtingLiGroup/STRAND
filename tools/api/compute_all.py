@@ -764,19 +764,19 @@ def run_all_with_patterns(
     prefilter_kwargs: dict | None = None,
     fallback_model_path: str | None = None,
     foci_fallback_threshold: float = 0.5,
-    enable_foci_fallback: bool = True,
+    enable_foci_fallback: bool = False,
 ):
     """
     从 pkl 一步完成：
       1. 预过滤
       2. 计算 17 维特征
       3. 默认使用强 8 分类 XGBoost 模型预测定位模式
-      4. 如果 8 分类结果中 Foci 占比 > foci_fallback_threshold，
-         则使用 7 分类 no-Foci 模型重新预测，并用 7 分类结果替代原结果。
+      4. 当前默认不再进行 Foci fallback；只有调用方显式传入
+         enable_foci_fallback=True 且提供 fallback_model_path 时，才会启用旧 fallback 逻辑。
 
     注意：
       - Bento/SPRAWL 特征只计算一次。
-      - fallback 只重新执行 PatternClassifier.predict()。
+      - fallback 只重新执行 PatternClassifier.predict()，且当前默认关闭。
       - 最终类别列统一为 pattern。
     """
     feat_df = compute_all_from_pkl(
@@ -816,9 +816,9 @@ def run_all_with_patterns(
             print(out_df["pattern"].value_counts(normalize=True))
 
     # ------------------------------------------------------------
-    # Step 2. Foci fallback:
-    # If primary 8-class prediction assigns > 50% rows to Foci,
-    # rerun prediction with 7-class no-Foci model.
+    # Step 2. Optional historical Foci fallback.
+    # The public default keeps the primary 8-class output; this branch only runs
+    # when callers explicitly enable it and provide a 7-class no-Foci model.
     # ------------------------------------------------------------
     used_fallback = False
 
@@ -858,8 +858,8 @@ def run_all_with_patterns(
                     f"Foci ratio {foci_ratio:.4f} <= threshold {foci_fallback_threshold:.4f}"
                 )
 
-    # 建议保留这三个字段，方便之后知道到底用了哪个模型。
-    # 如果你想让结果文件更干净，可以删掉这三行。
+    # Optional audit columns are intentionally left disabled so the public output
+    # schema stays compact and compatible with earlier STRAND result tables.
     # out_df["pattern_model_used"] = "fallback_7class_no_foci" if used_fallback else "primary_8class_prop075"
     # out_df["primary_foci_ratio"] = foci_ratio
     # out_df["foci_fallback_threshold"] = float(foci_fallback_threshold)

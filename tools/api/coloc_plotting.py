@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import pickle
 from pathlib import Path
 import pandas as pd
 import numpy as np
 
 from tools.engines.coloc_visualization import plot_coloc_outputs
+from tools.engines.instant_adapter import bundle_to_instant_dataframe
 
 
 def run_coloc_plots_from_outdir(
@@ -48,6 +50,17 @@ def run_coloc_plots_from_outdir(
     instant_input_path = out_dir / 'instant_input_after_prefilter.csv'
     instant_input_df = pd.read_csv(instant_input_path) if instant_input_path.exists() else None
 
+    # 独立绘图时允许直接从已经预过滤的子 PKL 构建坐标，避免为了 top-pair 图重跑 PP/CPB。
+    if plot_top_pairs and instant_input_df is None and pkl_path is not None:
+        print(f'[subcellfeat-coloc-plot] loading PKL for top-pair coordinates: {pkl_path}')
+        with open(pkl_path, 'rb') as bundle_handle:
+            bundle = pickle.load(bundle_handle)
+        instant_input_df = bundle_to_instant_dataframe(
+            bundle,
+            use_3d=use_3d,
+        )
+        del bundle
+
     cpb_pvals = None
     cpb_path = out_dir / 'instant_cpb_pvals.npy'
     if cpb_path.exists():
@@ -86,7 +99,7 @@ def run_coloc_plots_from_outdir(
 
     if plot_top_pairs and (pkl_path is None or instant_input_df is None):
         raise FileNotFoundError(
-            'Top-pair spatial plots require both --pkl and instant_input_after_prefilter.csv.'
+            'Top-pair spatial plots require --pkl or instant_input_after_prefilter.csv.'
         )
 
     raw_paths = plot_coloc_outputs(

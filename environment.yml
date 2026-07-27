@@ -12,6 +12,8 @@ dependencies:
   - matplotlib
   - tqdm
   - pyarrow
+  - numba
+  - pytorch
   - shapely
   - geopandas
   - networkx
@@ -25,4 +27,3 @@ dependencies:
       - joblib
       - kneed
       - minisom
-
