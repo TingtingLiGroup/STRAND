@@ -68,10 +68,6 @@ def test_cli_compartment_help():
     _run_help("tools.cli.compartments")
 
 
-def test_cli_compartment_optimized_help():
-    _run_help("tools.compartment_optimized.cli")
-
-
 def test_cli_compartment_redisplay_help():
     _run_help("tools.cli.compartment_redisplay")
 

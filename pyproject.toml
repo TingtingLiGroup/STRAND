@@ -69,7 +69,6 @@ docs = [
 subcellfeat = "tools.cli.run:main"
 subcellfeat-pattern = "tools.cli.pattern:main"
 subcellfeat-compartment = "tools.cli.compartments:main"
-subcellfeat-compartment-optimized = "tools.compartment_optimized.cli:main"
 subcellfeat-compartment-redisplay = "tools.cli.compartment_redisplay:main"
 subcellfeat-coloc = "tools.cli.colocalization:main"
 subcellfeat-coloc-plot = "tools.cli.coloc_plot:main"
@@ -95,7 +94,6 @@ models = [
 testpaths = [
 "tests",
 "tools/instant_optimized/tests",
-"tools/compartment_optimized/tests",
 "tools/engines/tests",
 ]
 python_files = ["test_*.py"]

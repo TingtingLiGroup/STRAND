@@ -17,7 +17,6 @@ The main goals are:
 - `tools/api/`: stable Python-facing orchestration functions.
 - `tools/engines/`: adapters and workflow engines for feature, compartment, and visualization tasks.
 - `tools/instant_optimized/`: low-memory InSTAnT-compatible colocalization backend.
-- `tools/compartment_optimized/`: low-memory same-cell RNAflux/SOM compartment backend.
 - `tools/models/` and `models/`: pattern-classifier loading code and packaged model files.
 - `tests/` and module-local `tests/`: import, CLI, compatibility, and optimized-backend equivalence checks.
 
@@ -37,13 +36,13 @@ The public CLI defaults to the primary 8-class XGBoost model and preserves `Foci
 
 ### Optimized Backends
 
-The optimized colocalization backend keeps InSTAnT PP/CPB semantics while reducing memory usage with sparse or chunked representations. The optimized compartment backend keeps same-cell RNAflux/SOM behavior while using cell indexing, memmapped arrays, and chunked output. These backends are exposed as explicit modules or default adapters where compatibility has been tested.
+The optimized colocalization backend keeps InSTAnT PP/CPB semantics while reducing memory usage with sparse or chunked representations. It is exposed through the default colocalization adapter because compatibility has been tested.
 
 ## Tradeoffs
 
 - PKL input is simple and matches existing data, but it cannot be streamed before loading.
 - CLI functions expose many parameters because the underlying scientific workflows are parameterized; this favors transparent command-line reproducibility over a small function signature.
-- Optimized backends add implementation complexity, but they are isolated and covered by equivalence tests.
+- Optimized backend code adds implementation complexity, so only the colocalization backend is exposed publicly.
 - Some integration tests depend on large LFS data and are disabled by default; small CLI and equivalence tests remain part of the default local test suite.
 
 ## Known Limits
@@ -55,4 +54,4 @@ The optimized colocalization backend keeps InSTAnT PP/CPB semantics while reduci
 
 ## Change History
 
-- 2026-07-27: Documented the optimized STRAND release structure, primary-only 8-class pattern default, fast-feature constraint, and expanded default test coverage.
+- 2026-07-27: Documented the STRAND release structure, primary-only 8-class pattern default, fast-feature constraint, and expanded default test coverage.

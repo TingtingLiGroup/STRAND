@@ -7,7 +7,6 @@ STRAND (Subcellular-Resolved Spatial Transcriptome RNA Architecture and Navigati
 | `subcellfeat` | Full pipeline: compute 17 spatial features (Bento + SPRAWL) and predict RNA localization patterns |
 | `subcellfeat-pattern` | Predict patterns from pre-computed feature parquet (skip feature computation) |
 | `subcellfeat-compartment` | Detect subcellular transcriptomic compartments via RNAflux embedding + SOM clustering |
-| `subcellfeat-compartment-optimized` | Run the low-memory global same-cell RNAflux/SOM compartment backend |
 | `subcellfeat-compartment-redisplay` | Redraw compartment plots from existing point-level compartment CSV files |
 | `subcellfeat-coloc` | Identify significant RNA-RNA colocalization pairs via InSTAnT PP + CPB |
 | `subcellfeat-coloc-plot` | Redraw colocalization visualizations from an existing output directory |
@@ -46,8 +45,6 @@ A lightweight command for when features have already been computed. Takes a feat
 ### 1.3 Compartment Detection (`subcellfeat-compartment`)
 
 Detects subcellular transcriptomic compartments using RNA spatial distribution and embedding-based analysis. The default workflow uses same-cell local RNAflux neighborhoods, `radius=auto` based on the current group's cell size, and SOM clustering over the default auto range `4..7`.
-
-For very large datasets, `subcellfeat-compartment-optimized` provides a low-memory global same-cell backend with Numba cell indexing, memmapped RNAflux/RGB arrays, chunked SOM assignment, and display-column output splitting.
 
 Outputs (prefixed with `--out-prefix`):
 
@@ -110,7 +107,6 @@ The compartment detection module uses PyTorch and Numba. `--device auto` uses `c
 
 ```bash
 subcellfeat-compartment --help
-subcellfeat-compartment-optimized --help
 ```
 
 ### 2.5 Verify Installation
@@ -119,7 +115,6 @@ subcellfeat-compartment-optimized --help
 subcellfeat --help
 subcellfeat-pattern --help
 subcellfeat-compartment --help
-subcellfeat-compartment-optimized --help
 subcellfeat-compartment-redisplay --help
 subcellfeat-coloc --help
 subcellfeat-coloc-plot --help
@@ -263,20 +258,6 @@ subcellfeat-compartment \
   --n-clusters auto \
   --cluster-range-min 4 \
   --cluster-range-max 7 \
-  --profile
-```
-
-Large low-memory backend:
-
-```bash
-subcellfeat-compartment-optimized \
-  --pkl data/simulated_data_dict.pkl \
-  --out-dir results/simulated_compartment_optimized \
-  --group-col batch \
-  --display-col fov \
-  --frac 0.01 \
-  --radius 5 \
-  --n-clusters auto \
   --profile
 ```
 

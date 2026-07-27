@@ -75,7 +75,6 @@ Main command:
 
 ```bash
 subcellfeat-compartment
-subcellfeat-compartment-optimized
 subcellfeat-compartment-redisplay
 ```
 
@@ -87,21 +86,6 @@ Common outputs:
 embedding plots
 subdomain plots
 cluster assignment tables
-```
-
-The optimized backend also writes:
-
-```text
-metadata.json
-work/rnaflux.npy
-work/cell_row_order.npy
-work/cell_row_offsets.npy
-work/query_rgb.npy
-work/all_point_rgb.npy
-work/subdomain_labels.npy
-results/*_sampled_subdomain_points.csv
-results/*_sampled_rnaflux_embedding.png
-results/*_sampled_subdomains.png
 ```
 
 ### `sampled_batches.csv`

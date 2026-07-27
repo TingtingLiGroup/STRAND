@@ -6,7 +6,6 @@ Command:
 
 ```bash
 subcellfeat-compartment
-subcellfeat-compartment-optimized
 subcellfeat-compartment-redisplay
 ```
 
@@ -55,22 +54,6 @@ subcellfeat-compartment \
   --cluster-range-max 7 \
   --profile
 ```
-
-Large low-memory global backend:
-
-```bash
-subcellfeat-compartment-optimized \
-  --pkl data/simulated_data_dict.pkl \
-  --out-dir results/simulated_compartment_optimized \
-  --group-col batch \
-  --display-col fov \
-  --frac 0.01 \
-  --radius 5 \
-  --n-clusters auto \
-  --profile
-```
-
----
 
 ## 4. Important parameters
 
