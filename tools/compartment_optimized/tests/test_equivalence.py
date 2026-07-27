@@ -113,6 +113,20 @@ class OptimizedCompartmentEquivalenceTests(unittest.TestCase):
             actual = np.load(output_path)
         np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12)
 
+    def test_same_cell_rnaflux_handles_unused_gene_categories(self) -> None:
+        """确认过滤后残留的未使用gene类别不会让RNAflux产生NaN。"""
+
+        df = _make_small_dataframe()
+        categories = list(df["gene"].cat.categories) + ["UNUSED_GENE"]
+        df["gene"] = pd.Categorical(df["gene"], categories=categories, ordered=True)
+        sample_positions = np.array([0, 3, 8, 13, 17, 22, 25, 31], dtype=np.int64)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "rnaflux.npy"
+            compute_same_cell_rnaflux(df, sample_positions, 1.5, output_path, workers=2, cell_batch_size=2)
+            actual = np.load(output_path)
+        self.assertTrue(np.isfinite(actual).all())
+        np.testing.assert_array_equal(actual[:, -1], np.zeros(len(sample_positions)))
+
     def test_same_cell_interpolation_matches_channel_griddata(self) -> None:
         """确认复用一次三角剖分的三通道插值与旧逐通道griddata一致。"""
 

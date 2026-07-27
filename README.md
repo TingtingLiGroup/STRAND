@@ -1,6 +1,6 @@
 # STRAND Tools
 
-STRAND (Subcellular-Resolved Spatial Transcriptome RNA Architecture and Navigation Database) Tools is a command-line toolbox for subcellular spatial transcriptomics analysis. It provides four commands for standardized PKL input data:
+STRAND (Subcellular-Resolved Spatial Transcriptome RNA Architecture and Navigation Database) Tools is a command-line toolbox for subcellular spatial transcriptomics analysis. It provides public commands for standardized PKL input data:
 
 | Command | Function |
 |---------|----------|
@@ -214,16 +214,16 @@ subcellfeat \
   --profile
 ```
 
-For large datasets, use `--fast` to skip the two slowest SPRAWL features (punctate + radial):
+For large datasets, use `--fast --features-only` to skip the two slowest SPRAWL features (punctate + radial). Fast feature output is not compatible with pattern prediction, because the default XGBoost classifier expects all 17 features:
 
 ```bash
 subcellfeat \
   --pkl data/simulated_data_dict.pkl \
-  --out results/simulated_pattern.parquet \
-  --fast --profile
+  --out results/simulated_fast_features.parquet \
+  --fast --features-only --profile
 ```
 
-Or reduce SPRAWL approximation parameters:
+For a faster pattern-prediction run, keep all 17 features and reduce SPRAWL approximation parameters:
 
 ```bash
 subcellfeat \

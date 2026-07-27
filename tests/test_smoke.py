@@ -38,6 +38,28 @@ def test_cli_subcellfeat_help():
     _run_help("tools.cli.run")
 
 
+def test_cli_subcellfeat_fast_requires_features_only():
+    """Fast mode should fail before loading data when pattern prediction is requested."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tools.cli.run",
+            "--pkl",
+            "missing.pkl",
+            "--out",
+            "missing.parquet",
+            "--fast",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert result.returncode != 0
+    assert "--fast can only be used with --features-only" in result.stderr
+    assert "missing.pkl" not in result.stderr
+
+
 def test_cli_pattern_help():
     _run_help("tools.cli.pattern")
 

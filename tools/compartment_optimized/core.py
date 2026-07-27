@@ -220,6 +220,13 @@ def _prepare_dataframe(bundle: dict, group_col: str, only_group: Optional[str]) 
         group_mask = df[group_col].cat.codes.to_numpy(copy=False) == int(matching_codes[0])
         if not np.all(group_mask):
             df = df.loc[group_mask].copy()
+
+    # 分组过滤后必须压缩类别；否则未使用的gene类别会留下全零列，
+    # 后续跨细胞标准差为0并在RNAflux标准化时产生NaN。
+    for category_column in ("cell", "gene", group_col):
+        if category_column in df.columns and isinstance(df[category_column].dtype, pd.CategoricalDtype):
+            df[category_column] = df[category_column].cat.remove_unused_categories()
+
     df["x"] = pd.to_numeric(df["x"], errors="raise")
     df["y"] = pd.to_numeric(df["y"], errors="raise")
     if not np.isfinite(df[["x", "y"]].to_numpy()).all():
@@ -298,6 +305,9 @@ def compute_same_cell_rnaflux(
     query_cell_codes = cell_codes[sample_positions]
     query_order, query_starts, query_stops = _build_query_lookup(query_cell_codes, num_cells)
     cell_std = _compute_cell_std(cell_index, gene_codes, num_genes, profile, progress_interval_cells)
+    safe_cell_std = cell_std.copy()
+    zero_std_mask = (~np.isfinite(safe_cell_std)) | (safe_cell_std == 0)
+    safe_cell_std[zero_std_mask] = 1.0
     np.save(output_path.with_name("cell_gene_std.npy"), cell_std)
 
     x_values = df["x"].to_numpy(copy=False)
@@ -325,8 +335,10 @@ def compute_same_cell_rnaflux(
             local_profiles = np.divide(local_counts, local_totals[:, None], out=np.zeros_like(local_counts), where=local_totals[:, None] > 0)
             cell_gene_counts = np.bincount(gene_codes[cell_rows], minlength=num_genes).astype(np.float64, copy=False)
             cell_profile = cell_gene_counts / cell_gene_counts.sum()
-            with np.errstate(divide="ignore", invalid="ignore"):
-                rnaflux[query_ids] = (local_profiles.astype(np.float64) - cell_profile) / cell_std
+            cell_rnaflux = (local_profiles.astype(np.float64) - cell_profile) / safe_cell_std
+            if np.any(zero_std_mask):
+                cell_rnaflux[:, zero_std_mask] = 0.0
+            rnaflux[query_ids] = cell_rnaflux
         return batch_stop - batch_start
 
     batch_starts = range(0, cell_index.num_cells, cell_batch_size)

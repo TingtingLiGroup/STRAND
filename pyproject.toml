@@ -92,6 +92,11 @@ models = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = [
+"tests",
+"tools/instant_optimized/tests",
+"tools/compartment_optimized/tests",
+"tools/engines/tests",
+]
 python_files = ["test_*.py"]
 addopts = "-q"

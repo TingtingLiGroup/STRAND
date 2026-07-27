@@ -147,7 +147,13 @@ def build_parser():
 
 
 def main():
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+
+    # Fast mode intentionally skips two SPRAWL features, so the 17-feature
+    # classifier cannot be used on its output.
+    if args.fast and not args.features_only:
+        parser.error("--fast can only be used with --features-only; remove --fast for pattern prediction.")
 
     if args.fast and args.max_cells is None:
         args.max_cells = 50

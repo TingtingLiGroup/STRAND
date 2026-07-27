@@ -61,18 +61,24 @@ def _load_redisplay_inputs(
         raise ValueError("Compartment PKL must contain a dictionary")
 
     coordinates = data_bundle.get("coordinates")
-    if not isinstance(coordinates, pd.DataFrame):
-        raise ValueError("Compartment PKL does not contain a coordinates DataFrame")
-    if "cell" not in coordinates.columns or target_display_col not in coordinates.columns:
-        raise ValueError(
-            f"coordinates must contain 'cell' and '{target_display_col}' columns"
-        )
+    if isinstance(coordinates, pd.DataFrame) and {"cell", target_display_col}.issubset(coordinates.columns):
+        source_table = coordinates
+        source_name = "coordinates"
+    else:
+        data_df = data_bundle.get("data_df")
+        if not isinstance(data_df, pd.DataFrame) or not {"cell", target_display_col}.issubset(data_df.columns):
+            raise ValueError(
+                "Compartment PKL must contain 'cell' and "
+                f"'{target_display_col}' in coordinates or data_df"
+            )
+        source_table = data_df
+        source_name = "data_df"
 
     # 只保留重新拆分必需的细胞映射，立即释放超大转录本表和表达矩阵引用。
-    cell_display_map = coordinates[["cell", target_display_col]].copy()
+    cell_display_map = source_table[["cell", target_display_col]].copy()
     cell_display_map["cell"] = cell_display_map["cell"].astype(str)
     if cell_display_map[target_display_col].isna().any():
-        raise ValueError(f"coordinates contains missing values in '{target_display_col}'")
+        raise ValueError(f"{source_name} contains missing values in '{target_display_col}'")
     conflicting_counts = cell_display_map.groupby("cell", sort=False)[target_display_col].nunique()
     conflicting_cells = conflicting_counts[conflicting_counts > 1]
     if not conflicting_cells.empty:
@@ -83,7 +89,7 @@ def _load_redisplay_inputs(
 
     cell_boundary = data_bundle.get("cell_boundary") or {}
     nuclear_boundary = data_bundle.get("nuclear_boundary") or {}
-    del coordinates, data_bundle
+    del source_table, coordinates, data_bundle
     gc.collect()
     return cell_display_map, cell_boundary, nuclear_boundary
 
