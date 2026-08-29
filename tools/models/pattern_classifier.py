@@ -135,7 +135,11 @@ class PatternClassifier:
     def predict(self, feature_df: pd.DataFrame) -> pd.DataFrame:
         """
         输入包含 cell/gene + 17维特征 的表，
-        输出原表 + 概率列 + pattern。
+        输出原表 + 概率列 + pattern + pattern_prob。
+
+        pattern_prob 是被选中类别的后验概率，即 max_k P(y=k|x)。它可以由 p_* 列自行
+        求最大值得到，但显式给出一列有两个好处：使用者不必每次重算，且它与 pattern
+        标签在同一处生成，不会因为两边各算一次而出现不一致。
         """
         df = self._normalize_input(feature_df)
         prob_df = self.predict_proba(df)
@@ -147,6 +151,7 @@ class PatternClassifier:
             out[f"p_{c}"] = prob_df[c].values
 
         out["pattern"] = top1
+        out["pattern_prob"] = prob_df.max(axis=1).values
 
         return out
 

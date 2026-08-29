@@ -35,6 +35,9 @@ Bento feature columns
 SPRAWL feature columns
 p_<class> probability columns
 pattern
+pattern_prob
+n_transcripts
+low_abundance
 ```
 
 ### Feature columns
@@ -66,6 +69,26 @@ pattern
 ```
 
 This is the official final localization label.
+
+### Interpretability columns
+
+```text
+p_<class>        posterior probability of each localization class
+pattern_prob     posterior probability of the assigned class, i.e. max over p_<class>
+n_transcripts    number of transcripts of this gene in this cell used for the call
+low_abundance    True when n_transcripts is below --low-abundance-cut (default 10)
+```
+
+`pattern` is the arg-max of the `p_<class>` columns, so it is a most probable class
+rather than a determination of biological localization. Use `pattern_prob` to separate
+well-supported calls from borderline ones, and `n_transcripts` to know how much
+evidence each call rests on. Cell-gene pairs below `--cellgene-filter-min-transcripts`
+(default 6) never reach the classifier at all.
+
+`low_abundance` is descriptive, not a quality verdict: across the STRAND collection a
+low transcript count does not reliably predict a low probability, and in one dataset the
+relationship is reversed. See `docs/pattern_module.md` for the numbers behind this and
+for how to read `pattern_prob`.
 
 ---
 

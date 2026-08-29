@@ -32,7 +32,9 @@ Default prediction strategy:
 
 1. Use the primary 8-class XGBoost model.
 2. Keep the primary 8-class output, including `Foci`.
-3. Save the final result with the unified column name `pattern`.
+3. Save the final result with the unified column name `pattern`, together with the
+   assigned-class probability, the transcript count behind each call, and a
+   low-abundance flag.
 
 The historical 7-class no-Foci model is retained only for explicit compatibility use in the Python API. The command-line defaults do not switch models based on Foci ratio.
 
@@ -349,6 +351,9 @@ Bento features
 SPRAWL features
 class probability columns
 pattern
+pattern_prob
+n_transcripts
+low_abundance
 ```
 
 The final pattern label is stored in:
@@ -356,6 +361,14 @@ The final pattern label is stored in:
 ```text
 pattern
 ```
+
+`pattern` is the arg-max over the class probabilities, so every call comes with the
+evidence behind it: `pattern_prob` is the posterior probability of the assigned class,
+`n_transcripts` is the number of transcripts the call was computed from, and
+`low_abundance` flags counts at the low end of the supported range. Filter on
+`pattern_prob` and `n_transcripts` separately — see
+[docs/pattern_module.md](docs/pattern_module.md) §9 for how the probability maps onto
+held-out accuracy and why a low count does not by itself mean a poor call.
 
 ### 6.2 Compartment Output
 

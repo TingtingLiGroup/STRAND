@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from tools.api.compute_all import compute_all_from_pkl, run_all_with_patterns
+from tools.api.patterns import DEFAULT_LOW_ABUNDANCE_CUT
 from tools.models.pattern_classifier import default_model_path
 
 
@@ -142,6 +143,15 @@ def build_parser():
         default=10,
         help="经过 cell-gene 过滤后，保留 gene 所需的最小细胞数，默认 10。",
     )
+    p.add_argument(
+        "--low-abundance-cut",
+        type=int,
+        default=DEFAULT_LOW_ABUNDANCE_CUT,
+        help=(
+            "标记 low_abundance 的转录本数切点，默认 10。该标记是描述性的，"
+            "只说明分类所依据的分子数处于受支持范围低端，不代表置信度低。"
+        ),
+    )
 
     return p
 
@@ -216,6 +226,7 @@ def main():
             fallback_model_path=str(fallback_model_path) if fallback_model_path is not None else None,
             foci_fallback_threshold=args.foci_fallback_threshold,
             enable_foci_fallback=False,
+            low_abundance_cut=args.low_abundance_cut,
         )
 
 

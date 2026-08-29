@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from tools.api import predict_patterns_from_parquet
+from tools.api.patterns import DEFAULT_LOW_ABUNDANCE_CUT
 from tools.models.pattern_classifier import default_model_path
 
 _DEFAULT_MODEL = default_model_path("multiclass_xgb_8class_prop075_final_from_cv.joblib")
@@ -52,6 +53,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--low-abundance-cut",
+        type=int,
+        default=DEFAULT_LOW_ABUNDANCE_CUT,
+        help=(
+            "标记 low_abundance 的转录本数切点，默认 10。仅在输入特征表带 "
+            "n_transcripts 列时生效；该标记是描述性的，不代表置信度低。"
+        ),
+    )
+
+    parser.add_argument(
         "--profile",
         action="store_true",
         help="输出 primary pattern 分布和 fallback 状态。",
@@ -72,6 +83,7 @@ def main():
         enable_foci_fallback=False,
         profile=args.profile,
         output_path=Path(args.output),
+        low_abundance_cut=args.low_abundance_cut,
     )
 
     print(f"[subcellfeat-pattern] saved to: {args.output}")

@@ -12,7 +12,11 @@ from shapely.geometry import Polygon
 from tools.engines.bento_adapter import compute_bento13_from_dict
 from tools.engines.sprawl_adapter import compute_sprawl_scores_from_pkl
 from tools.models.pattern_classifier import PatternClassifier
-from tools.api.patterns import _get_foci_ratio
+from tools.api.patterns import (
+    DEFAULT_LOW_ABUNDANCE_CUT,
+    _get_foci_ratio,
+    annotate_low_abundance,
+)
 from tools.utils.timing import timed, TimerReport
 
 
@@ -25,6 +29,23 @@ def _normalize_index(df: pd.DataFrame) -> pd.DataFrame:
         [df.index.levels[0].astype(str), df.index.levels[1].astype(str)]
     )
     return df
+
+
+def _count_cellgene_transcripts(bundle: dict) -> pd.DataFrame:
+    """Count transcripts per (cell, gene) in the bundle fed to feature computation.
+
+    Counted on the final synchronized bundle rather than on the prefilter statistics,
+    so the number means exactly "transcripts this classification was computed from"
+    regardless of which prefilter steps were enabled. One row of data_df is one
+    transcript. The MultiIndex matches _normalize_index so it joins onto the feature
+    table directly.
+    """
+    df = bundle["data_df"][["cell", "gene"]].copy()
+    df["cell"] = df["cell"].astype(str)
+    df["gene"] = df["gene"].astype(str)
+
+    counts = df.groupby(["cell", "gene"], observed=True).size().rename("n_transcripts")
+    return counts.to_frame()
 
 
 def _save_df(df: pd.DataFrame, out_path: str) -> str:
@@ -730,6 +751,11 @@ def compute_all_from_pkl(
 
         with timed("ALL:join", rep, print_each=profile):
             all_df = bento_df.join(sprawl_df, how=how)
+            all_df = all_df.join(_count_cellgene_transcripts(bundle), how="left")
+            # The left join makes the column float if any pair were missing a count,
+            # which should not happen since both sides come from the same bundle.
+            if all_df["n_transcripts"].notna().all():
+                all_df["n_transcripts"] = all_df["n_transcripts"].astype("int64")
 
         if out_path:
             with timed("ALL:write_out", rep, print_each=profile):
@@ -765,6 +791,7 @@ def run_all_with_patterns(
     fallback_model_path: str | None = None,
     foci_fallback_threshold: float = 0.5,
     enable_foci_fallback: bool = False,
+    low_abundance_cut: int = DEFAULT_LOW_ABUNDANCE_CUT,
 ):
     """
     从 pkl 一步完成：
@@ -777,7 +804,8 @@ def run_all_with_patterns(
     注意：
       - Bento/SPRAWL 特征只计算一次。
       - fallback 只重新执行 PatternClassifier.predict()，且当前默认关闭。
-      - 最终类别列统一为 pattern。
+      - 最终类别列统一为 pattern，并附 pattern_prob / n_transcripts / low_abundance
+        三列可解读性信息。
     """
     feat_df = compute_all_from_pkl(
         pkl_path,
@@ -863,6 +891,14 @@ def run_all_with_patterns(
     # out_df["pattern_model_used"] = "fallback_7class_no_foci" if used_fallback else "primary_8class_prop075"
     # out_df["primary_foci_ratio"] = foci_ratio
     # out_df["foci_fallback_threshold"] = float(foci_fallback_threshold)
+
+    out_df = annotate_low_abundance(out_df, low_abundance_cut=low_abundance_cut)
+
+    if profile and "n_transcripts" in out_df.columns:
+        print("[pattern] transcripts_per_cellgene =")
+        print(out_df["n_transcripts"].describe())
+        print("[pattern] low_abundance_cut =", low_abundance_cut)
+        print("[pattern] low_abundance_fraction =", float(out_df["low_abundance"].mean()))
 
     if pattern_output_path is not None:
         Path(pattern_output_path).parent.mkdir(parents=True, exist_ok=True)
