@@ -4,7 +4,7 @@ STRAND (Subcellular-Resolved Spatial Transcriptome RNA Architecture and Navigati
 
 | Command | Function |
 |---------|----------|
-| `subcellfeat` | Full pipeline: compute 17 spatial features (Bento + SPRAWL) and predict RNA localization patterns |
+| `subcellfeat` | Full pipeline: compute 28 scale-invariant spatial & CSR Z-score features (`--feature-set v1_17d` for legacy 17 features) and predict RNA localization patterns |
 | `subcellfeat-pattern` | Predict patterns from pre-computed feature parquet (skip feature computation) |
 | `subcellfeat-compartment` | Detect subcellular transcriptomic compartments via RNAflux embedding + SOM clustering |
 | `subcellfeat-compartment-redisplay` | Redraw compartment plots from existing point-level compartment CSV files |
@@ -20,7 +20,7 @@ The toolbox is designed for molecule-resolved spatial transcriptomics datasets s
 
 ### 1.1 Pattern Classification (`subcellfeat`)
 
-The main command. It computes 17 spatial features (13 Bento + 4 SPRAWL) for each cell-gene pair from a PKL bundle, then predicts RNA localization patterns using a trained XGBoost classifier.
+The main command. By default (`--feature-set v2_28d`), it normalizes each cell geometry to a unitless canonical span (`100.0`) and computes 28 spatial features (13 scale-normalized Bento + 4 deterministic SPRAWL + 6 same-cell continuous CSR null Z-scores + 5 morphology/abundance covariates) for each cell-gene pair from a PKL bundle, then predicts RNA localization patterns using the sparse-augmented 8-class XGBoost classifier (`models/multiclass_xgb_8class_v2_28d_sparse_aug.joblib`). Pass `--feature-set v1_17d` to reproduce the legacy 17-feature workflow.
 
 Supported pattern classes:
 

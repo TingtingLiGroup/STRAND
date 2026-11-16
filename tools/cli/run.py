@@ -6,19 +6,21 @@ from pathlib import Path
 
 from tools.api.compute_all import compute_all_from_pkl, run_all_with_patterns
 from tools.api.patterns import DEFAULT_LOW_ABUNDANCE_CUT
-from tools.models.pattern_classifier import default_model_path
+from tools.models.pattern_classifier import (
+    DEFAULT_MODEL_V2_FILENAME,
+    LEGACY_MODEL_V1_FILENAME,
+    default_model_path,
+)
 
 
 def build_parser():
     p = argparse.ArgumentParser(
         prog="subcellfeat",
         description=(
-            "从 PKL bundle 计算 17 维特征（Bento13 + SPRAWL4），并进行 "
-            "RNA 定位模式预测。默认先使用强 8 类 XGBoost 模型 "
-            "multiclass_xgb_8class_prop075_final_from_cv.joblib；"
-            "当前默认不再进行 Foci fallback，始终保留 8 类 primary 预测结果。"
-            "默认自动执行输入预处理：nc ratio 极端细胞过滤、cell-gene 低转录本过滤、"
-            "gene 支持过滤和 cell 同步。"
+            "从 PKL bundle 计算 28 维尺度不变与同细胞 CSR Z-score 特征（可通过 --feature-set v1_17d 切换旧版 17 维），"
+            "并进行 8 类 RNA 亚细胞定位模式预测。默认主模型为 "
+            f"{DEFAULT_MODEL_V2_FILENAME}（当 --feature-set v1_17d 且未指定模型时自动切换为 {LEGACY_MODEL_V1_FILENAME}）。"
+            "默认自动执行输入预处理：nc ratio 极端细胞过滤、cell-gene 低转录本过滤、gene 支持过滤和 cell 同步。"
         ),
     )
 
@@ -36,7 +38,7 @@ def build_parser():
     p.add_argument(
         "--fast",
         action="store_true",
-        help="Fast sanity run: SPRAWL only peripheral+central (debug).",
+        help="Fast sanity run: SPRAWL only peripheral+central (debug, requires --features-only).",
     )
 
     default_proc = max(1, min(8, (os.cpu_count() or 1) - 1))
@@ -72,16 +74,26 @@ def build_parser():
     )
 
     p.add_argument(
+        "--feature-set",
+        default="auto",
+        choices=("auto", "v2_28d", "v2_scaled_17d", "v1_17d"),
+        help=(
+            "特征体系版本：默认 auto（启用新版 28 维尺度不变特征 v2_28d；"
+            "传 v1_17d 可回退至旧版 17 维特征与旧版默认模型）。"
+        ),
+    )
+    p.add_argument(
         "--pattern-model",
         default=None,
-        help="primary 分类器 joblib 路径；默认使用强 8 类 XGBoost 模型models/multiclass_xgb_8class_prop075_final_from_cv.joblib。",
+        help=(
+            f"primary 分类器 joblib 路径；默认按特征版本自动选用 models/{DEFAULT_MODEL_V2_FILENAME} "
+            f"（或 v1_17d 下的 models/{LEGACY_MODEL_V1_FILENAME}）。"
+        ),
     )
     p.add_argument(
         "--fallback-pattern-model",
         default=None,
-        help=(
-            "历史兼容参数；当前 CLI 默认不再启用 Foci fallback。"
-        ),
+        help="历史兼容参数；当前 CLI 默认不再启用 Foci fallback。",
     )
     p.add_argument(
         "--foci-fallback-threshold",
@@ -98,7 +110,7 @@ def build_parser():
     p.add_argument(
         "--features-only",
         action="store_true",
-        help="只计算 17 维特征，不进行定位模式预测。",
+        help="只计算特征表（默认 28 维，可用 --feature-set v1_17d 切换 17 维），不进行定位模式预测。",
     )
 
     p.add_argument(
@@ -160,7 +172,7 @@ def main():
     parser = build_parser()
     args = parser.parse_args()
 
-    # Fast mode intentionally skips two SPRAWL features, so the 17-feature
+    # Fast mode intentionally skips two SPRAWL features, so the pattern
     # classifier cannot be used on its output.
     if args.fast and not args.features_only:
         parser.error("--fast can only be used with --features-only; remove --fast for pattern prediction.")
@@ -197,8 +209,10 @@ def main():
         }
 
     if args.features_only:
+        fset = "v2_28d" if args.feature_set == "auto" else args.feature_set
         compute_all_from_pkl(
             args.pkl,
+            feature_set=fset,
             sprawl_kwargs=sprawl_kwargs,
             out_path=args.out,
             profile=args.profile,
@@ -206,10 +220,13 @@ def main():
             prefilter_kwargs=prefilter_kwargs,
         )
     else:
-        model_path = (
-            Path(args.pattern_model) if args.pattern_model is not None
-            else default_model_path("multiclass_xgb_8class_prop075_final_from_cv.joblib")
-        )
+        if args.pattern_model is not None:
+            model_path = Path(args.pattern_model)
+        elif args.feature_set in ("v1_17d", "v2_scaled_17d"):
+            model_path = default_model_path(LEGACY_MODEL_V1_FILENAME)
+        else:
+            model_path = default_model_path(DEFAULT_MODEL_V2_FILENAME)
+
         fallback_model_path = (
             Path(args.fallback_pattern_model) if args.fallback_pattern_model is not None
             else None
@@ -218,6 +235,7 @@ def main():
         run_all_with_patterns(
             pkl_path=args.pkl,
             model_path=str(model_path),
+            feature_set=args.feature_set,
             sprawl_kwargs=sprawl_kwargs,
             pattern_output_path=args.out,
             profile=args.profile,

@@ -305,10 +305,11 @@ class ShapeProximity(PointFeature):
         Values closer to 0 indicate farther from boundary, closer to 1 indicate nearer
     """
 
-    def __init__(self, instance_key: str, shape_key: str):
+    def __init__(self, instance_key: str, shape_key: str, preserve_empty_nan: bool = False):
         super().__init__(instance_key, shape_key)
         self.cell_features.add("radius")
         self.attributes.add(f"{self.instance_key}_radius")
+        self.preserve_empty_nan = preserve_empty_nan
 
     def extract(self, df):
         df = super().extract(df)
@@ -360,11 +361,12 @@ class ShapeProximity(PointFeature):
         inner_proximity = (cell_radius - inner_dist) / cell_radius
         outer_proximity = (cell_radius - outer_dist) / cell_radius
 
-        if np.isnan(inner_proximity):
-            inner_proximity = 0
+        if not self.preserve_empty_nan:
+            if np.isnan(inner_proximity):
+                inner_proximity = 0
 
-        if np.isnan(outer_proximity):
-            outer_proximity = 0
+            if np.isnan(outer_proximity):
+                outer_proximity = 0
 
         return {
             f"{self.shape_key}_inner_proximity": inner_proximity,
@@ -399,10 +401,11 @@ class ShapeAsymmetry(PointFeature):
         Values closer to 0 indicate symmetry, closer to 1 indicate asymmetry
     """
 
-    def __init__(self, instance_key: str, shape_key: str):
+    def __init__(self, instance_key: str, shape_key: str, preserve_empty_nan: bool = False):
         super().__init__(instance_key, shape_key)
         self.cell_features.add("radius")
         self.attributes.add(f"{self.instance_key}_radius")
+        self.preserve_empty_nan = preserve_empty_nan
 
     def extract(self, df):
         df = super().extract(df)
@@ -454,11 +457,12 @@ class ShapeAsymmetry(PointFeature):
         inner_asymmetry = inner_to_centroid / cell_radius
         outer_asymmetry = outer_to_centroid / cell_radius
 
-        if np.isnan(inner_asymmetry):
-            inner_asymmetry = 0
+        if not self.preserve_empty_nan:
+            if np.isnan(inner_asymmetry):
+                inner_asymmetry = 0
 
-        if np.isnan(outer_asymmetry):
-            outer_asymmetry = 0
+            if np.isnan(outer_asymmetry):
+                outer_asymmetry = 0
 
         return {
             f"{self.shape_key}_inner_asymmetry": inner_asymmetry,
@@ -1046,7 +1050,12 @@ def register_point_feature(name: str, FeatureClass: Type[PointFeature]) -> None:
 
 
 
-def compute_rnaforest13_features(df: pd.DataFrame, instance_key: str, nucleus_key: str) -> Dict[str, float]:
+def compute_rnaforest13_features(
+    df: pd.DataFrame,
+    instance_key: str,
+    nucleus_key: str,
+    preserve_empty_nan: bool = False,
+) -> Dict[str, float]:
     """
     用 Bento 原 feature classes 计算官方 13 个特征。
     输入 df 是“单个 cell-gene 的点表”，必须至少包含：
@@ -1061,17 +1070,17 @@ def compute_rnaforest13_features(df: pd.DataFrame, instance_key: str, nucleus_ke
     out = {}
 
     # Distance (3): cell inner; nucleus inner + outer
-    out.update(ShapeProximity(instance_key, instance_key).extract(df))
+    out.update(ShapeProximity(instance_key, instance_key, preserve_empty_nan=preserve_empty_nan).extract(df))
     if df[nucleus_key].values[0] is not None:
-        out.update(ShapeProximity(instance_key, nucleus_key).extract(df))
+        out.update(ShapeProximity(instance_key, nucleus_key, preserve_empty_nan=preserve_empty_nan).extract(df))
     else:
         out[f"{nucleus_key}_inner_proximity"] = np.nan
         out[f"{nucleus_key}_outer_proximity"] = np.nan
 
     # Symmetry (3): cell inner; nucleus inner + outer
-    out.update(ShapeAsymmetry(instance_key, instance_key).extract(df))
+    out.update(ShapeAsymmetry(instance_key, instance_key, preserve_empty_nan=preserve_empty_nan).extract(df))
     if df[nucleus_key].values[0] is not None:
-        out.update(ShapeAsymmetry(instance_key, nucleus_key).extract(df))
+        out.update(ShapeAsymmetry(instance_key, nucleus_key, preserve_empty_nan=preserve_empty_nan).extract(df))
     else:
         out[f"{nucleus_key}_inner_asymmetry"] = np.nan
         out[f"{nucleus_key}_outer_asymmetry"] = np.nan
@@ -1103,3 +1112,154 @@ def compute_rnaforest13_features(df: pd.DataFrame, instance_key: str, nucleus_ke
         "l_half_radius",
     ]
     return {k: out.get(k, np.nan) for k in keep}
+
+
+def compute_rnaforest13_features_fast(
+    pts_xy: np.ndarray,
+    pts_geom: np.ndarray,
+    cell_poly,
+    nuc_poly,
+    in_nuc_mask: Optional[np.ndarray],
+    pr: Dict[str, object],
+    instance_key: str = "cell",
+    nucleus_key: str = "nucleus",
+    preserve_empty_nan: bool = False,
+    ripley_estimator: Optional[RipleysKEstimator] = None,
+    cell_raster_nuc_moment: Optional[float] = None,
+    precomp_cell_b_dists: Optional[np.ndarray] = None,
+    precomp_cell_c_dists: Optional[np.ndarray] = None,
+    precomp_nuc_b_dists: Optional[np.ndarray] = None,
+    precomp_nuc_c_dists: Optional[np.ndarray] = None,
+) -> Dict[str, float]:
+    """
+    Vectorized equivalent of compute_rnaforest13_features without per-gene GeoDataFrame overhead.
+    """
+    import shapely
+
+    cell_radius = float(pr["radius"])
+    cell_raster = pr["raster"]
+    cell_span = float(pr["span"])
+
+    # 1. Cell proximity & asymmetry
+    cell_b_dist = float(
+        np.mean(precomp_cell_b_dists)
+        if precomp_cell_b_dists is not None
+        else np.mean(shapely.distance(cell_poly.boundary, pts_geom))
+    )
+    cell_c_dist = float(
+        np.mean(precomp_cell_c_dists)
+        if precomp_cell_c_dists is not None
+        else np.mean(shapely.distance(cell_poly.centroid, pts_geom))
+    )
+    cell_inner_proximity = (cell_radius - cell_b_dist) / cell_radius
+    cell_inner_asymmetry = cell_c_dist / cell_radius
+    if not preserve_empty_nan:
+        if np.isnan(cell_inner_proximity):
+            cell_inner_proximity = 0
+        if np.isnan(cell_inner_asymmetry):
+            cell_inner_asymmetry = 0
+
+    # 2. Nucleus proximity, asymmetry & dispersion
+    if nuc_poly is not None and in_nuc_mask is not None:
+        outer_mask = ~in_nuc_mask
+        if in_nuc_mask.any():
+            nuc_in_b = float(
+                np.mean(precomp_nuc_b_dists[in_nuc_mask])
+                if precomp_nuc_b_dists is not None
+                else np.mean(shapely.distance(nuc_poly.boundary, pts_geom[in_nuc_mask]))
+            )
+            nuc_in_c = float(
+                np.mean(precomp_nuc_c_dists[in_nuc_mask])
+                if precomp_nuc_c_dists is not None
+                else np.mean(shapely.distance(nuc_poly.centroid, pts_geom[in_nuc_mask]))
+            )
+            nuc_inner_proximity = (cell_radius - nuc_in_b) / cell_radius
+            nuc_inner_asymmetry = nuc_in_c / cell_radius
+        else:
+            nuc_inner_proximity = np.nan if preserve_empty_nan else 0
+            nuc_inner_asymmetry = np.nan if preserve_empty_nan else 0
+
+        if outer_mask.any():
+            nuc_out_b = float(
+                np.mean(precomp_nuc_b_dists[outer_mask])
+                if precomp_nuc_b_dists is not None
+                else np.mean(shapely.distance(nuc_poly.boundary, pts_geom[outer_mask]))
+            )
+            nuc_out_c = float(
+                np.mean(precomp_nuc_c_dists[outer_mask])
+                if precomp_nuc_c_dists is not None
+                else np.mean(shapely.distance(nuc_poly.centroid, pts_geom[outer_mask]))
+            )
+            nuc_outer_proximity = (cell_radius - nuc_out_b) / cell_radius
+            nuc_outer_asymmetry = nuc_out_c / cell_radius
+        else:
+            nuc_outer_proximity = np.nan if preserve_empty_nan else 0
+            nuc_outer_asymmetry = np.nan if preserve_empty_nan else 0
+
+        if cell_raster is not None and len(cell_raster) > 0 and np.asarray(cell_raster).any():
+            nuc_c_xy = np.array([[nuc_poly.centroid.x, nuc_poly.centroid.y]], dtype=np.float64)
+            pt_nuc_mom = _second_moment(nuc_c_xy, pts_xy)
+            c_nuc_mom = (
+                cell_raster_nuc_moment
+                if cell_raster_nuc_moment is not None
+                else _second_moment(nuc_c_xy, cell_raster)
+            )
+            nuc_dispersion_norm = pt_nuc_mom / c_nuc_mom if c_nuc_mom > 0 else np.nan
+        else:
+            nuc_dispersion_norm = np.nan
+    else:
+        nuc_inner_proximity = np.nan
+        nuc_outer_proximity = np.nan
+        nuc_inner_asymmetry = np.nan
+        nuc_outer_asymmetry = np.nan
+        nuc_dispersion_norm = np.nan
+
+    # 3. Point dispersion norm
+    if cell_raster is not None and len(cell_raster) > 0 and np.asarray(cell_raster).any():
+        pt_centroid = pts_xy.mean(axis=0, keepdims=True)
+        point_moment = _second_moment(pt_centroid, pts_xy)
+        cell_moment = _second_moment(pt_centroid, cell_raster)
+        point_dispersion_norm = point_moment / cell_moment if cell_moment > 0 else np.nan
+    else:
+        point_dispersion_norm = np.nan
+
+    # 4. Ripley stats
+    quarter_span = cell_span / 4.0
+    n_radii = int(quarter_span * 2)
+    if pts_xy.shape[0] < 2 or n_radii <= 0:
+        l_max = l_max_gradient = l_min_gradient = l_monotony = l_half_radius = np.nan
+    else:
+        radii = np.linspace(1, quarter_span * 2, num=n_radii)
+        est = ripley_estimator if ripley_estimator is not None else RipleysKEstimator(
+            area=float(pr["area"]),
+            x_min=float(pr["minx"]),
+            y_min=float(pr["miny"]),
+            x_max=float(pr["maxx"]),
+            y_max=float(pr["maxy"]),
+        )
+        stats = est.Hfunction(data=pts_xy, radii=radii, mode="none")
+        l_max = float(np.max(stats))
+        ripley_smooth = pd.Series(stats).rolling(5).mean().dropna().to_numpy()
+        if ripley_smooth.size < 2:
+            ripley_smooth = np.array([0.0, 0.0])
+        ripley_gradient = np.gradient(ripley_smooth)
+        l_max_gradient = float(ripley_gradient.max())
+        l_min_gradient = float(ripley_gradient.min())
+        l_monotony = float(spearmanr(radii, stats)[0])
+        l_half_radius = float(est.Hfunction(data=pts_xy, radii=[quarter_span], mode="none")[0])
+
+    return {
+        f"{instance_key}_inner_proximity": cell_inner_proximity,
+        f"{nucleus_key}_inner_proximity": nuc_inner_proximity,
+        f"{nucleus_key}_outer_proximity": nuc_outer_proximity,
+        f"{instance_key}_inner_asymmetry": cell_inner_asymmetry,
+        f"{nucleus_key}_inner_asymmetry": nuc_inner_asymmetry,
+        f"{nucleus_key}_outer_asymmetry": nuc_outer_asymmetry,
+        "point_dispersion_norm": point_dispersion_norm,
+        f"{nucleus_key}_dispersion_norm": nuc_dispersion_norm,
+        "l_max": l_max,
+        "l_max_gradient": l_max_gradient,
+        "l_min_gradient": l_min_gradient,
+        "l_monotony": l_monotony,
+        "l_half_radius": l_half_radius,
+    }

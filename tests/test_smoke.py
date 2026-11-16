@@ -20,6 +20,7 @@ def test_import_engines():
         bento_adapter,
         compartment_redisplay,
         compartment_same_cell_fast,
+        csr_features,
         instant_adapter,
         sprawl_adapter,
     )

@@ -83,7 +83,8 @@ def _poly_aspect_ratio(poly: Union[MultiPolygon, None]) -> float:
         return np.nan
 
     # get coordinates of min bounding box vertices around polygon
-    x, y = poly.minimum_rotated_rectangle.exterior.coords.xy
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x, y = poly.minimum_rotated_rectangle.exterior.coords.xy
 
     # get length of bound box sides
     edge_length = (
@@ -730,17 +731,103 @@ def polygon_raster(poly, step=1):
     # use Bento original raster logic
     return _raster_polygon(poly, step=step)
 
-def compute_cell_prereqs(cell_polygon, step=1):
+def compute_cell_prereqs(cell_polygon, step=1, canonical_grid: bool = False, fixed_span: Optional[float] = None):
     """
     生成 point_features 需要的 cell-level 字段（与 Bento 原逻辑一致）
     返回 dict，可直接塞进 df 的列：
       radius, raster, span, minx/miny/maxx/maxy, area
     """
     b = polygon_bounds(cell_polygon)
+    rst = _raster_polygon_canonical(cell_polygon, step=step) if canonical_grid else polygon_raster(cell_polygon, step=step)
+    sp = float(fixed_span) if fixed_span is not None else polygon_span(cell_polygon)
     return {
         "radius": polygon_radius(cell_polygon),
-        "raster": polygon_raster(cell_polygon, step=step),
-        "span": polygon_span(cell_polygon),
+        "raster": rst,
+        "span": sp,
         "area": polygon_area(cell_polygon),
         **b,
     }
+
+
+def _raster_polygon_canonical(poly, step: float = 1.0) -> Optional[np.ndarray]:
+    """
+    Scale-invariant canonical raster grid anchored at (0.0, 0.0) using half-step offsets.
+    Prevents int(bounds) truncation jumps under float scaling.
+    """
+    import math
+    import shapely
+
+    if not poly:
+        return None
+    minx, miny, maxx, maxy = poly.bounds
+    k_min = math.floor(minx / step) - 1
+    k_max = math.ceil(maxx / step) + 1
+    m_min = math.floor(miny / step) - 1
+    m_max = math.ceil(maxy / step) + 1
+    xs = (np.arange(k_min, k_max + 1, dtype=np.float64) + 0.5) * step
+    ys = (np.arange(m_min, m_max + 1, dtype=np.float64) + 0.5) * step
+    gx, gy = np.meshgrid(xs, ys)
+    xy = np.column_stack([gx.ravel(), gy.ravel()])
+    mask = shapely.contains_xy(poly, xy[:, 0], xy[:, 1])
+    xy = xy[mask]
+    if xy.shape[0] == 0:
+        return np.array([[poly.centroid.x, poly.centroid.y]], dtype=np.float64)
+    return xy
+
+
+def scale_normalize_cell_geometry(
+    cell_poly,
+    nuc_poly=None,
+    pts_xy: Optional[np.ndarray] = None,
+    target_span: float = 100.0,
+):
+    """
+    Translate cell centroid to (0, 0) and uniformly scale cell_poly, nuc_poly, and pts_xy
+    so that cell maximum exterior vertex diameter equals `target_span` (default 100.0).
+    """
+    from shapely import affinity
+
+    if cell_poly is None or cell_poly.is_empty:
+        raise ValueError("cell_poly is empty or None")
+
+    ext_xy = np.asarray(cell_poly.exterior.coords, dtype=np.float64)
+    if ext_xy.shape[0] < 3:
+        raise ValueError("cell_poly has fewer than 3 exterior vertices")
+
+    raw_span = float(distance.pdist(ext_xy).max())
+    if not np.isfinite(raw_span) or raw_span <= 1e-12:
+        raise ValueError(f"Degenerate cell_poly span: {raw_span}")
+
+    cx = float(cell_poly.centroid.x)
+    cy = float(cell_poly.centroid.y)
+    scale = float(target_span) / raw_span
+
+    def _norm_poly(p):
+        if p is None or p.is_empty:
+            return None
+        ext = np.round((np.asarray(p.exterior.coords, dtype=np.float64) - np.array([[cx, cy]])) * scale, 8)
+        holes = [
+            np.round((np.asarray(ring.coords, dtype=np.float64) - np.array([[cx, cy]])) * scale, 8)
+            for ring in p.interiors
+        ]
+        from shapely.geometry import Polygon as _Polygon
+        p_out = _Polygon(ext, holes=holes)
+        if not p_out.is_valid:
+            p_out = p_out.buffer(0)
+        return p_out
+
+    cell_norm = _norm_poly(cell_poly)
+    nuc_norm = _norm_poly(nuc_poly) if nuc_poly is not None else None
+    pts_norm = None
+    if pts_xy is not None:
+        arr = np.asarray(pts_xy, dtype=np.float64)
+        pts_norm = np.round((arr - np.array([[cx, cy]], dtype=np.float64)) * scale, 8)
+
+    meta = {
+        "centroid_x": cx,
+        "centroid_y": cy,
+        "raw_span": raw_span,
+        "scale": scale,
+        "target_span": float(target_span),
+    }
+    return cell_norm, nuc_norm, pts_norm, meta

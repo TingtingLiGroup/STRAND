@@ -14,7 +14,7 @@ def load_pkl_file(file_path):
     return data
 
 
-def preprocess_transcripts(data):
+def preprocess_transcripts(data, build_geometry: bool = True):
     """
     处理转录本数据。
 
@@ -25,7 +25,7 @@ def preprocess_transcripts(data):
       - y
 
     输出：
-      - 添加 geometry 列后的 DataFrame
+      - 添加 geometry 列后的 DataFrame（当 build_geometry=True）
     """
     data_df = data.get("data_df")
 
@@ -43,9 +43,14 @@ def preprocess_transcripts(data):
     if "gene" in data_df.columns:
         data_df["gene"] = data_df["gene"].astype(str)
 
-    data_df["geometry"] = [
-        Point(xy) for xy in zip(data_df["x"], data_df["y"])
-    ]
+    if build_geometry:
+        import shapely
+        data_df["geometry"] = shapely.points(
+            np.column_stack([
+                np.asarray(data_df["x"], dtype=np.float64),
+                np.asarray(data_df["y"], dtype=np.float64),
+            ])
+        )
 
     return data_df
 
@@ -227,16 +232,16 @@ def preprocess_boundaries(data):
     return cell_boundary_dict, nuclear_boundary_dict
 
 
-def load_and_process_data(pkl_file_path):
+def load_and_process_data(pkl_file_path, build_geometry: bool = True):
     """
     从 pkl 文件加载并处理数据。
 
     返回：
-      - data_df: 带 geometry 列的 transcript DataFrame
+      - data_df: transcript DataFrame（build_geometry=True 时含 geometry 列）
       - cell_boundary_dict: dict[str(cell_id)] -> Polygon or None
       - nuclear_boundary_dict: dict[str(cell_id)] -> Polygon or None
     """
-    data = load_pkl_file(pkl_file_path)
-    data_df = preprocess_transcripts(data)
+    data = load_pkl_file(pkl_file_path) if not isinstance(pkl_file_path, dict) else pkl_file_path
+    data_df = preprocess_transcripts(data, build_geometry=build_geometry)
     cell_boundary_dict, nuclear_boundary_dict = preprocess_boundaries(data)
     return data_df, cell_boundary_dict, nuclear_boundary_dict

@@ -85,9 +85,9 @@ Save final pattern table
 
 ## 4. Feature system
 
-The classifier uses 17 spatial features.
+By default (`--feature-set v2_28d`), each cell is centered at its centroid and scaled to a canonical maximum diameter of `100.0` so that pixel- and micron-coordinate datasets produce identical features. The classifier uses 28 features across three blocks (pass `--feature-set v1_17d` for the legacy unscaled 17-feature pipeline):
 
-### 4.1 Bento RNAforest13 features
+### 4.1 Scale-normalized Bento RNAforest13 features (13)
 
 ```text
 bento_cell_inner_proximity
@@ -105,7 +105,7 @@ bento_l_monotony
 bento_l_half_radius
 ```
 
-### 4.2 SPRAWL features
+### 4.2 Deterministic SPRAWL features (4)
 
 ```text
 sprawl_peripheral
@@ -114,11 +114,33 @@ sprawl_punctate
 sprawl_radial
 ```
 
+### 4.3 Same-cell continuous CSR null Z-scores (6) & morphology/abundance covariates (5)
+
+```text
+csr_z_nuclear_frac
+csr_z_cell_edge_dist
+csr_z_perinuc_cyto_dist
+csr_z_centroid_shift
+csr_z_nn_clustering
+csr_z_rayleigh_radial
+feat_log1p_n_spots
+feat_nuclear_fraction
+feat_cell_nc_ratio
+feat_cell_aspect_ratio
+feat_cell_solidity
+```
+
 ---
 
 ## 5. Default models
 
-Primary model:
+Default v2 primary model (28 features, trained with `[6, 20]` sparse transcript augmentation and stored in portable XGBoost JSON booster format):
+
+```text
+models/multiclass_xgb_8class_v2_28d_sparse_aug.joblib
+```
+
+Legacy v1 primary model (17 features, used automatically when `--feature-set v1_17d` or when `subcellfeat-pattern` receives a 17-feature table):
 
 ```text
 models/multiclass_xgb_8class_prop075_final_from_cv.joblib

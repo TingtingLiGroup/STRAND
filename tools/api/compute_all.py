@@ -11,6 +11,11 @@ from shapely.geometry import Polygon
 
 from tools.engines.bento_adapter import compute_bento13_from_dict
 from tools.engines.sprawl_adapter import compute_sprawl_scores_from_pkl
+from tools.engines.csr_features import (
+    compute_csr_and_cov_from_dict,
+    FEATURE_COLS_V1_17D,
+    FEATURE_COLS_V2_28D,
+)
 from tools.models.pattern_classifier import PatternClassifier
 from tools.api.patterns import (
     DEFAULT_LOW_ABUNDANCE_CUT,
@@ -678,10 +683,12 @@ def _print_prefilter_stats(filter_stats: dict) -> None:
 
 
 def compute_all_from_pkl(
-    pkl_path: str,
+    pkl_path: str | dict,
     *,
+    feature_set: str = "v2_28d",
     bento_kwargs: dict | None = None,
     sprawl_kwargs: dict | None = None,
+    csr_kwargs: dict | None = None,
     out_path: str | None = None,
     how: str = "outer",
     profile: bool = False,
@@ -689,99 +696,112 @@ def compute_all_from_pkl(
     prefilter_kwargs: dict | None = None,
 ) -> pd.DataFrame:
     """
-    一键计算并合并：
-      - Bento 13 features（13列，bento_*）
-      - SPRAWL scores（默认4列，sprawl_*）
+    一键计算并合并特征：
+      - feature_set="v2_28d"（默认）：单细胞尺度归一 Bento13 + 固定种子 SPRAWL4
+        + 同细胞连续 CSR 零模型 Z-score 6列 + 细胞形态/丰度协变量 5列（共 28 列特征 + n_transcripts）
+      - feature_set="v2_scaled_17d"：单细胞尺度归一 + NaN 修复版 17 列特征 + n_transcripts
+      - feature_set="v1_17d"：旧版未缩放 Bento13 + SPRAWL4（17 列特征 + n_transcripts）
 
-    Default prefiltering can be controlled by prefilter_kwargs:
-      - nc ratio cell filtering
-      - cell-gene-level min transcript filtering
-      - gene support filtering after cell-gene filtering
-      - data_df / cell_boundary / nuclear_boundary cell synchronization
+    pkl_path 支持文件路径或内存 bundle dict。
     """
+    valid_sets = ("v1_17d", "v2_scaled_17d", "v2_28d")
+    if feature_set not in valid_sets:
+        raise ValueError(f"Unsupported feature_set={feature_set!r}; expected one of {valid_sets}")
+
     rep = TimerReport() if profile else None
     bento_kwargs = dict(bento_kwargs or {})
     sprawl_kwargs = dict(sprawl_kwargs or {})
+    csr_kwargs = dict(csr_kwargs or {})
     prefilter_kwargs = dict(prefilter_kwargs or {})
 
     bento_kwargs.setdefault("profile", profile)
     sprawl_kwargs.setdefault("profile", profile)
+    csr_kwargs.setdefault("profile", profile)
 
-    tmp_path = None
+    is_v2 = feature_set in ("v2_scaled_17d", "v2_28d")
+    if is_v2:
+        bento_kwargs.setdefault("scale_normalize", True)
+        bento_kwargs.setdefault("target_span", 100.0)
+        bento_kwargs.setdefault("preserve_empty_nan", True)
+        sprawl_kwargs.setdefault("scale_normalize", True)
+        sprawl_kwargs.setdefault("target_span", 100.0)
+        sprawl_kwargs.setdefault("random_seed", 42)
+        csr_kwargs.setdefault("target_span", 100.0)
+        csr_kwargs.setdefault("random_seed", 42)
 
-    try:
-        with timed("ALL:load_bundle", rep, print_each=profile):
+    with timed("ALL:load_bundle", rep, print_each=profile):
+        if isinstance(pkl_path, dict):
+            bundle = dict(pkl_path)
+        else:
             with open(pkl_path, "rb") as f:
                 bundle = pickle.load(f)
 
-        if prefilter_kwargs:
-            with timed("ALL:prefilter_bundle", rep, print_each=profile):
-                bundle, filter_stats = _prefilter_bundle_before_features(
-                    bundle,
-                    **prefilter_kwargs,
-                )
+    if prefilter_kwargs:
+        with timed("ALL:prefilter_bundle", rep, print_each=profile):
+            bundle, filter_stats = _prefilter_bundle_before_features(
+                bundle,
+                **prefilter_kwargs,
+            )
 
-            if profile:
-                _print_prefilter_stats(filter_stats)
+        if profile:
+            _print_prefilter_stats(filter_stats)
 
-        if max_cells is not None:
-            with timed(f"ALL:limit_cells({max_cells})", rep, print_each=profile):
-                bundle, cells = _limit_cells_in_bundle(bundle, max_cells=max_cells)
-            if profile:
-                print(f"[compute_all] kept first {len(cells)} cells")
+    if max_cells is not None:
+        with timed(f"ALL:limit_cells({max_cells})", rep, print_each=profile):
+            bundle, cells = _limit_cells_in_bundle(bundle, max_cells=max_cells)
+        if profile:
+            print(f"[compute_all] kept first {len(cells)} cells")
 
-        with timed("ALL:dump_tmp_bundle", rep, print_each=profile):
-            tmp = tempfile.NamedTemporaryFile(suffix=".pkl", delete=False)
-            tmp_path = tmp.name
-            tmp.close()
-            with open(tmp_path, "wb") as f:
-                pickle.dump(bundle, f)
+    with timed("ALL:bento_total", rep, print_each=profile):
+        bento_df = compute_bento13_from_dict(bundle, **bento_kwargs)
 
-        pkl_to_use = tmp_path
+    with timed("ALL:sprawl_total", rep, print_each=profile):
+        sprawl_df = compute_sprawl_scores_from_pkl(bundle, **sprawl_kwargs)
 
-        with timed("ALL:bento_total", rep, print_each=profile):
-            bento_df = compute_bento13_from_dict(pkl_to_use, **bento_kwargs)
+    with timed("ALL:normalize_index", rep, print_each=profile):
+        bento_df = _normalize_index(bento_df)
+        sprawl_df = _normalize_index(sprawl_df)
 
-        with timed("ALL:sprawl_total", rep, print_each=profile):
-            sprawl_df = compute_sprawl_scores_from_pkl(pkl_to_use, **sprawl_kwargs)
+    with timed("ALL:join", rep, print_each=profile):
+        all_df = bento_df.join(sprawl_df, how=how)
+        if feature_set == "v2_28d":
+            with timed("ALL:csr_cov_total", rep, print_each=profile):
+                csr_df = compute_csr_and_cov_from_dict(bundle, **csr_kwargs)
+                csr_df = _normalize_index(csr_df)
+                all_df = all_df.join(csr_df, how=how)
+            target_cols = FEATURE_COLS_V2_28D
+        else:
+            target_cols = FEATURE_COLS_V1_17D
 
-        with timed("ALL:normalize_index", rep, print_each=profile):
-            bento_df = _normalize_index(bento_df)
-            sprawl_df = _normalize_index(sprawl_df)
+        ordered_cols = [c for c in target_cols if c in all_df.columns]
+        all_df = all_df[ordered_cols]
 
-        with timed("ALL:join", rep, print_each=profile):
-            all_df = bento_df.join(sprawl_df, how=how)
-            all_df = all_df.join(_count_cellgene_transcripts(bundle), how="left")
-            # The left join makes the column float if any pair were missing a count,
-            # which should not happen since both sides come from the same bundle.
-            if all_df["n_transcripts"].notna().all():
-                all_df["n_transcripts"] = all_df["n_transcripts"].astype("int64")
+        all_df = all_df.join(_count_cellgene_transcripts(bundle), how="left")
+        # The left join makes the column float if any pair were missing a count,
+        # which should not happen since both sides come from the same bundle.
+        if all_df["n_transcripts"].notna().all():
+            all_df["n_transcripts"] = all_df["n_transcripts"].astype("int64")
 
-        if out_path:
-            with timed("ALL:write_out", rep, print_each=profile):
-                saved = _save_df(all_df, out_path)
-            print(f"[compute_all] saved to: {saved}")
+    if out_path:
+        with timed("ALL:write_out", rep, print_each=profile):
+            saved = _save_df(all_df, out_path)
+        print(f"[compute_all] saved to: {saved}")
 
-        if profile and rep is not None:
-            print(rep.summary())
+    if profile and rep is not None:
+        print(rep.summary())
 
-        return all_df
-
-    finally:
-        if tmp_path is not None:
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
+    return all_df
 
 
 
 def run_all_with_patterns(
-    pkl_path: str,
+    pkl_path: str | dict,
     model_path: str,
     *,
+    feature_set: str = "auto",
     bento_kwargs: dict | None = None,
     sprawl_kwargs: dict | None = None,
+    csr_kwargs: dict | None = None,
     feature_output_path: str | None = None,
     pattern_output_path: str | None = None,
     how: str = "outer",
@@ -796,21 +816,32 @@ def run_all_with_patterns(
     """
     从 pkl 一步完成：
       1. 预过滤
-      2. 计算 17 维特征
+      2. 计算特征（默认按模型所需列自动识别 v2_28d 或 v1_17d）
       3. 默认使用强 8 分类 XGBoost 模型预测定位模式
       4. 当前默认不再进行 Foci fallback；只有调用方显式传入
          enable_foci_fallback=True 且提供 fallback_model_path 时，才会启用旧 fallback 逻辑。
 
     注意：
-      - Bento/SPRAWL 特征只计算一次。
-      - fallback 只重新执行 PatternClassifier.predict()，且当前默认关闭。
       - 最终类别列统一为 pattern，并附 pattern_prob / n_transcripts / low_abundance
         三列可解读性信息。
     """
+    clf = PatternClassifier(model_path)
+    if feature_set == "auto":
+        if any(c.startswith("csr_z_") or c.startswith("feat_") for c in clf.feature_cols):
+            resolved_feature_set = "v2_28d"
+        else:
+            resolved_feature_set = str(clf.meta.get("feature_set", "v1_17d"))
+            if resolved_feature_set not in ("v1_17d", "v2_scaled_17d", "v2_28d"):
+                resolved_feature_set = "v1_17d"
+    else:
+        resolved_feature_set = feature_set
+
     feat_df = compute_all_from_pkl(
         pkl_path,
+        feature_set=resolved_feature_set,
         bento_kwargs=bento_kwargs,
         sprawl_kwargs=sprawl_kwargs,
+        csr_kwargs=csr_kwargs,
         out_path=None,
         how=how,
         profile=profile,
@@ -828,7 +859,6 @@ def run_all_with_patterns(
     # ------------------------------------------------------------
     # Step 1. Primary prediction: strong 8-class model
     # ------------------------------------------------------------
-    clf = PatternClassifier(model_path)
     out_df = clf.predict(feat_df.reset_index())
 
     foci_ratio = _get_foci_ratio(out_df, pattern_col="pattern")

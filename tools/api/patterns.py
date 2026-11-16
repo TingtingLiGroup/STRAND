@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 import pandas as pd
 
-from tools.models.pattern_classifier import PatternClassifier
+from tools.models.pattern_classifier import (
+    DEFAULT_MODEL_V2_FILENAME,
+    LEGACY_MODEL_V1_FILENAME,
+    PatternClassifier,
+    default_model_path,
+)
 
 # 低丰度标记的默认切点。这是一个**描述性**切点，用来标出转录本数处于受支持范围低端
 # （流程最小值为 6）的 cell-gene 对，不是质量判决：在 STRAND 收录的数据上，低转录本
@@ -45,7 +50,7 @@ def _get_foci_ratio(pattern_df: pd.DataFrame, pattern_col: str = "pattern") -> f
 def predict_patterns_from_parquet(
     feature_path: str | Path,
     output_path: str | Path,
-    model_path: str | Path,
+    model_path: str | Path | None = None,
     fallback_model_path: str | Path | None = None,
     foci_fallback_threshold: float = 0.5,
     enable_foci_fallback: bool = False,
@@ -56,7 +61,9 @@ def predict_patterns_from_parquet(
     从已计算好的 feature parquet 预测 RNA 定位模式。
 
     默认逻辑：
-      1. 先使用 primary 强 8 分类模型预测。
+      1. 当 model_path 为 None 或 "auto" 时，若特征表含 28 维 v2 特征列，默认采用
+         multiclass_xgb_8class_v2_28d_sparse_aug.joblib；若输入为旧版仅含 17 维特征列的表，
+         自动回退使用 multiclass_xgb_8class_prop075_final_from_cv.joblib。
       2. 当前默认不再进行 Foci fallback；只有调用方显式传入
          enable_foci_fallback=True 且提供 fallback_model_path 时，才会启用旧 fallback 逻辑。
       3. 最终类别列统一为 pattern，并附 pattern_prob；若特征表带 n_transcripts，
@@ -64,14 +71,27 @@ def predict_patterns_from_parquet(
     """
     df = pd.read_parquet(feature_path)
 
-    clf = PatternClassifier(model_path)
+    if model_path is None or str(model_path) == "auto":
+        has_v2_cols = "csr_z_nuclear_frac" in df.columns and "feat_log1p_n_spots" in df.columns
+        if has_v2_cols:
+            resolved_model_path = default_model_path(DEFAULT_MODEL_V2_FILENAME)
+        else:
+            resolved_model_path = default_model_path(LEGACY_MODEL_V1_FILENAME)
+            print(
+                "[subcellfeat-pattern] Detected legacy 17-feature input table; "
+                f"falling back to v1 model: {resolved_model_path.name}"
+            )
+    else:
+        resolved_model_path = Path(model_path)
+
+    clf = PatternClassifier(resolved_model_path)
     out = clf.predict(df)
 
     foci_ratio = _get_foci_ratio(out, pattern_col="pattern")
     used_fallback = False
 
     if profile:
-        print("[subcellfeat-pattern] primary_model =", model_path)
+        print("[subcellfeat-pattern] primary_model =", resolved_model_path)
         print("[subcellfeat-pattern] primary_classes =", getattr(clf, "classes", None))
         print("[subcellfeat-pattern] primary_n_rows =", len(out))
         print("[subcellfeat-pattern] primary_foci_ratio =", foci_ratio)
@@ -110,10 +130,6 @@ def predict_patterns_from_parquet(
                     "[subcellfeat-pattern][fallback] not triggered because "
                     f"Foci ratio {foci_ratio:.4f} <= threshold {foci_fallback_threshold:.4f}"
                 )
-
-    # out["pattern_model_used"] = "fallback_7class_no_foci" if used_fallback else "primary_8class_prop075"
-    # out["primary_foci_ratio"] = foci_ratio
-    # out["foci_fallback_threshold"] = float(foci_fallback_threshold)
 
     out = annotate_low_abundance(out, low_abundance_cut=low_abundance_cut)
 

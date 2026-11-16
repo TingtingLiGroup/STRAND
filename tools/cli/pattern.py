@@ -5,17 +5,18 @@ from pathlib import Path
 
 from tools.api import predict_patterns_from_parquet
 from tools.api.patterns import DEFAULT_LOW_ABUNDANCE_CUT
-from tools.models.pattern_classifier import default_model_path
-
-_DEFAULT_MODEL = default_model_path("multiclass_xgb_8class_prop075_final_from_cv.joblib")
+from tools.models.pattern_classifier import (
+    DEFAULT_MODEL_V2_FILENAME,
+    LEGACY_MODEL_V1_FILENAME,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Predict RNA localization patterns from a feature parquet. "
-            "Default: primary strong 8-class XGBoost model only; "
-            "Foci fallback is disabled."
+            "Predict RNA localization patterns from a precomputed feature parquet. "
+            f"Default ('auto') uses {DEFAULT_MODEL_V2_FILENAME} for 28-feature v2 tables "
+            f"and automatically falls back to {LEGACY_MODEL_V1_FILENAME} for legacy 17-feature tables."
         )
     )
 
@@ -24,19 +25,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--model",
-        default=str(_DEFAULT_MODEL),
+        default="auto",
         help=(
-            "primary 分类器 joblib 路径；默认使用强 8 类 XGBoost 模型 "
-            "models/multiclass_xgb_8class_prop075_final_from_cv.joblib。"
+            "primary 分类器 joblib 路径；默认 'auto'（输入含 28 维 v2 特征时选用 "
+            f"models/{DEFAULT_MODEL_V2_FILENAME}，旧版 17 维特征表自动回退 "
+            f"models/{LEGACY_MODEL_V1_FILENAME}）。"
         ),
     )
 
     parser.add_argument(
         "--fallback-model",
         default=None,
-        help=(
-            "历史兼容参数；当前 CLI 默认不再启用 Foci fallback。"
-        ),
+        help="历史兼容参数；当前 CLI 默认不再启用 Foci fallback。",
     )
 
     parser.add_argument(
@@ -77,7 +77,7 @@ def main():
 
     out = predict_patterns_from_parquet(
         feature_path=Path(args.input),
-        model_path=Path(args.model),
+        model_path=args.model,
         fallback_model_path=Path(args.fallback_model) if args.fallback_model is not None else None,
         foci_fallback_threshold=args.foci_fallback_threshold,
         enable_foci_fallback=False,

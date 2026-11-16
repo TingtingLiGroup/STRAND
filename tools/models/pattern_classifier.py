@@ -7,8 +7,11 @@ import numpy as np
 
 _MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 
+DEFAULT_MODEL_V2_FILENAME = "multiclass_xgb_8class_v2_28d_sparse_aug.joblib"
+LEGACY_MODEL_V1_FILENAME = "multiclass_xgb_8class_prop075_final_from_cv.joblib"
 
-def default_model_path(filename: str = "multiclass_xgb_8class_prop075_final_from_cv.joblib") -> Path:
+
+def default_model_path(filename: str = DEFAULT_MODEL_V2_FILENAME) -> Path:
     """Resolve default model path, works for both editable and wheel installs."""
     p = _MODELS_DIR / filename
     if p.exists():
@@ -28,7 +31,7 @@ class PatternClassifier:
     单标签多分类模式预测器。
 
     预期模型文件是一个 joblib bundle，至少包含：
-        - model: 已训练好的多分类模型对象（如 XGBClassifier）
+        - model（或跨版本便携 booster_json）: 已训练好的多分类模型对象
         - feature_cols: 训练时使用的特征列名列表
         - classes: 类别名列表，顺序需与 predict_proba 输出一致
 
@@ -59,17 +62,24 @@ class PatternClassifier:
             raise ValueError(
                 f"模型文件格式错误：{model_path}。\n"
                 "当前 PatternClassifier 期望 joblib 文件保存为 dict，至少包含："
-                "'model', 'feature_cols', 'classes'。"
+                "'model'（或 'booster_json'）、'feature_cols'、'classes'。"
             )
 
         self.model = obj.get("model", obj.get("clf", None))
+        self.booster_json = obj.get("booster_json", None)
         self.feature_cols = obj.get("feature_cols", None)
         self.classes = obj.get("classes", None)
         self.meta = obj.get("meta", {})
 
+        if self.model is None and self.booster_json is not None:
+            import xgboost as xgb
+            bst = xgb.Booster()
+            bst.load_model(bytearray(self.booster_json))
+            self.model = bst
+
         if self.model is None:
             raise ValueError(
-                f"模型文件 {model_path} 中未找到 'model'（或兼容别名 'clf'）。"
+                f"模型文件 {model_path} 中未找到 'model'（或 'booster_json' / 兼容别名 'clf'）。"
             )
 
         if self.feature_cols is None:
@@ -84,11 +94,6 @@ class PatternClassifier:
 
         self.feature_cols = list(self.feature_cols)
         self.classes = list(self.classes)
-
-        # print("[PatternClassifier] model_path =", model_path)
-        # print("[PatternClassifier] meta =", self.meta)
-        # print("[PatternClassifier] model_type =", type(self.model))
-        # print("[PatternClassifier] classes =", self.classes)
 
     def _normalize_input(self, feature_df: pd.DataFrame) -> pd.DataFrame:
         df = feature_df.copy()
@@ -113,7 +118,12 @@ class PatternClassifier:
         df = self._normalize_input(feature_df)
         X = df[self.feature_cols].copy()
 
-        probs = self.model.predict_proba(X)
+        if hasattr(self.model, "predict_proba"):
+            probs = self.model.predict_proba(X)
+        else:
+            import xgboost as xgb
+            dmat = xgb.DMatrix(X, feature_names=self.feature_cols)
+            probs = self.model.predict(dmat)
 
         if probs.shape[1] != len(self.classes):
             raise ValueError(
@@ -134,7 +144,7 @@ class PatternClassifier:
 
     def predict(self, feature_df: pd.DataFrame) -> pd.DataFrame:
         """
-        输入包含 cell/gene + 17维特征 的表，
+        输入包含 cell/gene + 特征列的表，
         输出原表 + 概率列 + pattern + pattern_prob。
 
         pattern_prob 是被选中类别的后验概率，即 max_k P(y=k|x)。它可以由 p_* 列自行
@@ -154,4 +164,3 @@ class PatternClassifier:
         out["pattern_prob"] = prob_df.max(axis=1).values
 
         return out
-

@@ -1,7 +1,9 @@
+import shapely
 import shapely.geometry
 
 import multiprocessing as mp
 import functools
+import zlib
 
 import pandas as pd
 import numpy as np
@@ -15,15 +17,39 @@ import os
 
 from . import utils
 
-########################
-#   Metrics guidelines #
-########################
-# Each metric function needs to take in a list of Cell object (from cell.py)
-# and output a table of Cell ids with gene_scores and gene_vars
 
-# The metric function calculates the per-gene score for all genes in the cell
-#   e.g. the periphery ranking, this will be based on the minimum distance of each spot to the periph
-#   e.g. the radial ranking this will be based on the min angle dist of each spot to the gene radial center
+def _make_cell_rng(random_seed: int, metric: str, cell_id: str) -> np.random.Generator:
+    token = f"{random_seed}:{metric}:{cell_id}".encode("utf-8")
+    seed_u32 = zlib.crc32(token) & 0xFFFFFFFF
+    return np.random.default_rng(seed_u32)
+
+
+def _mean_pairs_dist_rng(spots: np.ndarray, num_pairs: int, rng: np.random.Generator) -> float:
+    m = spots.shape[0]
+    i1 = rng.integers(0, m, size=num_pairs)
+    offset = rng.integers(1, m, size=num_pairs)
+    i2 = (i1 + offset) % m
+    diff = spots[i1] - spots[i2]
+    return float(np.sqrt(np.sum(diff * diff, axis=1)).mean())
+
+
+def _mean_pairs_angle_rng(
+    spots: np.ndarray,
+    centroid: np.ndarray,
+    num_pairs: int,
+    rng: np.random.Generator,
+) -> float:
+    m = spots.shape[0]
+    i1 = rng.integers(0, m, size=num_pairs)
+    offset = rng.integers(1, m, size=num_pairs)
+    i2 = (i1 + offset) % m
+    v1 = spots[i1] - centroid
+    v2 = spots[i2] - centroid
+    n1 = np.maximum(np.linalg.norm(v1, axis=1), 1e-12)
+    n2 = np.maximum(np.linalg.norm(v2, axis=1), 1e-12)
+    cos_ang = np.clip(np.sum(v1 * v2, axis=1) / (n1 * n2), -1.0, 1.0)
+    return float(np.arccos(cos_ang).mean())
+
 
 def _test(cells, **kwargs):
     """
@@ -71,33 +97,26 @@ def _peripheral(cell, ret_spot_ranks=False):
         'variance':[],
     }
 
-    #score the cell
     periph_dists = []
     spot_genes = []
 
     for zslice in cell.zslices:
-
-        #Calculate dists of each spot to periphery
         z_boundary = cell.boundaries[zslice]
-        z_spot_coords = cell.spot_coords[zslice]
+        z_spot_coords = np.asarray(cell.spot_coords[zslice], dtype=np.float64)
         z_spot_genes = cell.spot_genes[zslice]
 
         poly = shapely.geometry.Polygon(z_boundary)
-        for xy,gene in zip(z_spot_coords,z_spot_genes):
-            dist = poly.boundary.distance(shapely.geometry.Point(xy))
-            periph_dists.append(dist)
-            spot_genes.append(gene)
+        if len(z_spot_coords) > 0:
+            dists = shapely.distance(poly.boundary, shapely.points(z_spot_coords))
+            periph_dists.extend(dists.tolist())
+            spot_genes.extend(z_spot_genes)
 
-    #Rank the spots
     spot_genes = np.array(spot_genes)
-    spot_ranks = np.array(periph_dists).argsort().argsort()+1 #add one so ranks start at 1 rather than 0
+    spot_ranks = np.array(periph_dists).argsort().argsort()+1
 
-    #mostly for debugging
     if ret_spot_ranks:
         return spot_genes,spot_ranks
 
-
-    #score the genes
     exp_med = (cell.n+1)/2
     for gene in cell.genes:
         gene_ranks = spot_ranks[spot_genes == gene]
@@ -125,17 +144,13 @@ def peripheral(cells, **kwargs):
     processes = kwargs.get("processes", 2)
     compute_variance = kwargs.get("compute_variance", False)
 
-    # --- variance is optional ---
     if compute_variance:
-        # may be extremely slow (combinatorial)
         cells = list(utils._iter_vars(cells, processes))
     else:
-        # ensure gene_vars exists but cheap
         for c in cells:
             if not getattr(c, "gene_vars", None):
                 c.gene_vars = {g: np.nan for g in c.genes}
 
-    # --- scoring ---
     if processes is None or processes <= 1:
         return pd.concat((_peripheral(c) for c in cells), ignore_index=True)
 
@@ -143,10 +158,7 @@ def peripheral(cells, **kwargs):
         return pd.concat(p.imap_unordered(_peripheral, cells), ignore_index=True)
 
 
-
-
-
-def _radial(cell, num_iterations, num_pairs):
+def _radial(cell, num_iterations, num_pairs, random_seed=None):
     """
     Helper radial function gets called by radial() for multiprocessing of each cell
     """
@@ -166,54 +178,43 @@ def _radial(cell, num_iterations, num_pairs):
     cell = cell.filter_genes_by_count(min_gene_spots=2)
 
     all_genes = np.array([g for z in cell.zslices for g in cell.spot_genes[z]])
-    all_spots = np.array([xy for z in cell.zslices for xy in cell.spot_coords[z]])
-
-    #theoretical variance depends on just the number of iterations
-    #Let Y ~ Discrete Uniform from 0 to n, where n is the number of iterations
-    #Y represents the number of null permutations that are less than the obs distance and ranges from 0 to 'all'
-    #But our score is X = (Y-n/2)/(n/2) because we wanted to center it at 0 and scale it to have values between -1 and 1
-
-    #E[Y] = n/2 from definition of discrete uniform that ranges from 0 to n
-    #Var[Y] = n(n+2)/12 
-
-    #E[X] = (2/n)(E[Y]-n/2) = (2/n)(n/2-n/2) = 0
-    #Var[X] = (4/n^2)Var[Y] #since Var(aX+b) = (a^2)Var[X]
-    #Var[X] = (4/n^2)(n(n+2)/12)
-    #Var[X] = (1/n^2)(n(n+2)/3)
-    #Var[X] = (1/n)((n+2)/3)
-    #Var[X] = (n+2)/3n
-
-    #Also as n --> inf, Var[X] --> 1/3
-    #Var[X] = (1+2/n)/3 --> 1/3
+    all_spots = np.array([xy for z in cell.zslices for xy in cell.spot_coords[z]], dtype=np.float64)
 
     var = (num_iterations+2)/(3*num_iterations)
+    rng = _make_cell_rng(random_seed, "radial", str(cell.cell_id)) if random_seed is not None else None
 
     pre_calc_nulls = {}
+    genes_iter = sorted(cell.gene_counts.items()) if rng is not None else cell.gene_counts.items()
 
-    for gene,count in cell.gene_counts.items():
-
-        # Calculate the obs mean dist
+    for gene,count in genes_iter:
         gene_spots = all_spots[all_genes == gene]
-        obs_dist = utils.random_mean_pairs_angle(gene_spots, cell_centroid, num_pairs)
+        if rng is not None:
+            obs_dist = _mean_pairs_angle_rng(gene_spots, cell_centroid, num_pairs, rng)
+        else:
+            obs_dist = utils.random_mean_pairs_angle(gene_spots, cell_centroid, num_pairs)
 
-        # Null distribution by gene-label swapping
         if count in pre_calc_nulls:
             null_dists = pre_calc_nulls[count]
-
         else:
-            null_dists = []
-
-            #This is the time-consuming portion, having to make thousands of permutations for the null
-            start = time.time()
-            for i in range(num_iterations):
-                spot_inds = np.random.choice(cell.n,count,replace=False)
-                null = utils.random_mean_pairs_angle(all_spots[spot_inds], cell_centroid, num_pairs)
-                null_dists.append(null)
-
-            null_dists = np.array(null_dists)
+            if rng is not None:
+                null_dists = np.empty(num_iterations, dtype=np.float64)
+                for i in range(num_iterations):
+                    spot_inds = rng.choice(cell.n, count, replace=False)
+                    null_dists[i] = _mean_pairs_angle_rng(
+                        all_spots[spot_inds], cell_centroid, num_pairs, rng
+                    )
+            else:
+                null_list = []
+                for i in range(num_iterations):
+                    spot_inds = np.random.choice(cell.n, count, replace=False)
+                    null_list.append(
+                        utils.random_mean_pairs_angle(all_spots[spot_inds], cell_centroid, num_pairs)
+                    )
+                null_dists = np.array(null_list)
             pre_calc_nulls[count] = null_dists
 
-        obs = sum(null_dists < obs_dist)
+        tol = 1e-11 * max(1.0, abs(obs_dist)) if rng is not None else 0.0
+        obs = int(np.sum(null_dists < (obs_dist - tol)))
         exp = num_iterations/2
         score = (exp-obs)/exp
 
@@ -226,51 +227,33 @@ def _radial(cell, num_iterations, num_pairs):
         data['score'].append(score)
         data['variance'].append(var)
 
-
     return pd.DataFrame(data)
-
 
 
 def radial(cells, **kwargs):
     """
     Radial metric
-
-    Steps of this method:
-    1. Remove genes with 1 spot from consideration
-
-    2. For each gene, iteratively select X pairs of points and calculate the average angle between them
-       the angle being measured formed by (x1,y1) --> (cx,cy) --> (x2,y2) where (cx,cy) is the cell centroid
-
-    3. For `num_iterations` permutations, swap all gene labels
-       Repeat step 2 and remember permuted average angle for each gene-count
-       Calculate the quantile of the observed average distance against the background of average distances for the corresponding gene counts
-
-    4. Assign a score of 1 if the observed average distance is less than all permutations
-       score of -1 if the observed average distance is larger than all permutations, and a score of 0.5 if it is halfway between
-
-    5. Calculate the empirical variance of scores by converting all the null mean angles into scores
-
     """
-    #handle kwargs
     processes = kwargs.get('processes', 2)
     num_iterations = kwargs.get('num_iterations', 1000)
     num_pairs = kwargs.get('num_pairs', 4)
+    random_seed = kwargs.get('random_seed', None)
 
-    f = functools.partial(_radial, num_iterations=num_iterations, num_pairs=num_pairs)
-    
-    # ✅ serial path
+    f = functools.partial(
+        _radial,
+        num_iterations=num_iterations,
+        num_pairs=num_pairs,
+        random_seed=random_seed,
+    )
+
     if processes is None or processes <= 1:
         return pd.concat((f(c) for c in cells), ignore_index=True)
-    
+
     with mp.Pool(processes=processes) as p:
-        score_df = pd.DataFrame()
-        for i,cell_df in enumerate(p.imap_unordered(f, cells)):
-            score_df = pd.concat((score_df, cell_df), ignore_index=True)
-
-    return score_df
+        return pd.concat(p.imap_unordered(f, cells), ignore_index=True)
 
 
-def _punctate(cell, num_iterations, num_pairs):
+def _punctate(cell, num_iterations, num_pairs, random_seed=None):
     """
     Helper punctate function gets called by punctate() for multiprocessing of each cell
     """
@@ -288,48 +271,45 @@ def _punctate(cell, num_iterations, num_pairs):
     cell = cell.filter_genes_by_count(min_gene_spots=2)
 
     all_genes = np.array([g for z in cell.zslices for g in cell.spot_genes[z]])
-    all_spots = np.array([xy for z in cell.zslices for xy in cell.spot_coords[z]])
+    all_spots = np.array([xy for z in cell.zslices for xy in cell.spot_coords[z]], dtype=np.float64)
 
-    #theoretical variance depends on just the number of iterations
-    #Let Y ~ Discrete Uniform from 0 to n, where n is the number of iterations
-    #Y represents the number of null permutations that are less than the obs distance and ranges from 0 to 'all'
-    #But our score is X = (Y-n/2)/(n/2) because we wanted to center it at 0 and scale it to have values between -1 and 1
-
-    #E[Y] = n/2 from definition of discrete uniform that ranges from 0 to n
-    #Var[Y] = n(n+2)/12 
-
-    #E[X] = (2/n)(E[Y]-n/2) = (2/n)(n/2-n/2) = 0
-    #Var[X] = (4/n^2)Var[Y] #since Var(aX+b) = (a^2)Var[X]
-    #Var[X] = (4/n^2)(n(n+2)/12)
-    #Var[X] = (1/n^2)(n(n+2)/3)
-    #Var[X] = (1/n)((n+2)/3)
-    #Var[X] = (n+2)/3n
     var = (num_iterations+2)/(3*num_iterations)
+    rng = _make_cell_rng(random_seed, "punctate", str(cell.cell_id)) if random_seed is not None else None
 
     pre_calc_nulls = {}
-    for gene,count in cell.gene_counts.items():
+    genes_iter = sorted(cell.gene_counts.items()) if rng is not None else cell.gene_counts.items()
 
-        # Calculate the obs mean dist
+    for gene,count in genes_iter:
         gene_spots = all_spots[all_genes == gene]
-        obs_dist = utils.random_mean_pairs_dist(gene_spots, num_pairs)
+        if rng is not None:
+            obs_dist = _mean_pairs_dist_rng(gene_spots, num_pairs, rng)
+        else:
+            obs_dist = utils.random_mean_pairs_dist(gene_spots, num_pairs)
 
-        # Null distribution by gene-label swapping
         if count in pre_calc_nulls:
             null_dists = pre_calc_nulls[count]
         else:
-            null_dists = []
-            for i in range(num_iterations):
-                spot_inds = np.random.choice(cell.n,count,replace=False)
-                null = utils.random_mean_pairs_dist(all_spots[spot_inds], num_pairs)
-                null_dists.append(null)
-
-            null_dists = np.array(null_dists)
+            if rng is not None:
+                null_dists = np.empty(num_iterations, dtype=np.float64)
+                for i in range(num_iterations):
+                    spot_inds = rng.choice(cell.n, count, replace=False)
+                    null_dists[i] = _mean_pairs_dist_rng(
+                        all_spots[spot_inds], num_pairs, rng
+                    )
+            else:
+                null_list = []
+                for i in range(num_iterations):
+                    spot_inds = np.random.choice(cell.n, count, replace=False)
+                    null_list.append(
+                        utils.random_mean_pairs_dist(all_spots[spot_inds], num_pairs)
+                    )
+                null_dists = np.array(null_list)
             pre_calc_nulls[count] = null_dists
 
-        obs = sum(null_dists < obs_dist)
+        tol = 1e-11 * max(1.0, abs(obs_dist)) if rng is not None else 0.0
+        obs = int(np.sum(null_dists < (obs_dist - tol)))
         exp = len(null_dists)/2
         score = (exp-obs)/exp
-
 
         data['metric'].append('puncta')
         data['cell_id'].append(cell.cell_id)
@@ -346,39 +326,24 @@ def _punctate(cell, num_iterations, num_pairs):
 def punctate(cells, **kwargs):
     """
     Punctate metric
-
-    Uses multiprocessing to separately work on each cell
-    Steps of this new method:
-    1. Remove genes with 1 spot from consideration
-
-    2. For each gene, iteratively select X pairs of points and calculate the average distance between them
-        Remember this observed average distance for each gene
-
-    3. For `num_iterations` permutations, swap all gene labels
-        Repeat step 2 and remember permuted average distances for each gene-count
-        Calculate the quantile of the observed average distance against the background of average distances for the corresponding gene counts
-
-    4. Assign a score of 1 if the observed average distance is less than all permutations
-        score of -1 if the observed average distance is larger than all permutations, and a score of 0.5 if it is halfway between
-
-    5. Calculate the empirical variance of scores by converting all the null mean dists into scores
-
     """
-    #handle kwargs
     processes = kwargs.get('processes', 2)
     num_iterations = kwargs.get('num_iterations', 1000)
     num_pairs = kwargs.get('num_pairs', 4)
+    random_seed = kwargs.get('random_seed', None)
 
-    f = functools.partial(_punctate, num_iterations=num_iterations, num_pairs=num_pairs)
-    
-    # ✅ serial path
+    f = functools.partial(
+        _punctate,
+        num_iterations=num_iterations,
+        num_pairs=num_pairs,
+        random_seed=random_seed,
+    )
+
     if processes is None or processes <= 1:
         return pd.concat((f(c) for c in cells), ignore_index=True)
-    
-    with mp.Pool(processes=processes) as p:
-        score_df = pd.concat(p.imap_unordered(f, cells), ignore_index=True)
 
-    return score_df
+    with mp.Pool(processes=processes) as p:
+        return pd.concat(p.imap_unordered(f, cells), ignore_index=True)
 
 
 def _central(cell):
@@ -396,25 +361,21 @@ def _central(cell):
         'variance':[],
     }
 
-    #calculate distance of spot coords to cell centroid
     spot_genes = []
     spot_dists = []
     for zslice in cell.zslices:
         z_spot_coords = cell.spot_coords[zslice]
         z_spot_genes = cell.spot_genes[zslice]
 
-        #Euclidean distance to slice centroid
         slice_centroid = np.mean(cell.boundaries[zslice], axis=0)
         dists = np.sum((z_spot_coords-slice_centroid)**2, axis=1)
 
         spot_genes.extend(z_spot_genes)
         spot_dists.extend(dists)
 
-    #Rank the spots
     spot_genes = np.array(spot_genes)
-    spot_ranks = np.array(spot_dists).argsort().argsort()+1 #add one so ranks start at 1 rather than 0
+    spot_ranks = np.array(spot_dists).argsort().argsort()+1
 
-    #score the genes
     exp_med = (cell.n+1)/2
     for gene in cell.genes:
         gene_ranks = spot_ranks[spot_genes == gene]
@@ -431,7 +392,6 @@ def _central(cell):
         data['variance'].append(cell.gene_vars[gene])
 
     return pd.DataFrame(data)
-
 
 
 def central(cells, **kwargs):
@@ -455,6 +415,3 @@ def central(cells, **kwargs):
 
     with mp.Pool(processes=processes) as p:
         return pd.concat(p.imap_unordered(_central, cells), ignore_index=True)
-
-
-

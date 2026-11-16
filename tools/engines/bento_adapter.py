@@ -1,11 +1,17 @@
 from tools.io.data_loader import load_and_process_data
 from tools.bento_feature.bento.bento_tools import (
     compute_rnaforest13_features,
+    compute_rnaforest13_features_fast,
     compute_cell_prereqs,
+    scale_normalize_cell_geometry,
 )
+from tools.bento_feature.bento.bento_tools.point_features import _second_moment
 
+import numpy as np
 import pandas as pd
 import geopandas as gpd
+import shapely
+from astropy.stats.spatial import RipleysKEstimator
 
 from shapely.geometry import Point, Polygon, MultiPolygon, GeometryCollection
 from shapely.prepared import prep
@@ -87,7 +93,7 @@ def _to_single_polygon(geom):
 
 
 def compute_bento13_from_dict(
-    pkl_file_path: str,
+    pkl_file_path: str | dict,
     *,
     cell_id_col: str = "cell",
     gene_col: str = "gene",
@@ -99,26 +105,30 @@ def compute_bento13_from_dict(
     profile: bool = False,
     max_genes_per_cell: int | None = None,
     max_spots_per_gene: int | None = None,
+    scale_normalize: bool = False,
+    target_span: float = 100.0,
+    preserve_empty_nan: bool = False,
+    use_fast_vectorized: bool = True,
 ) -> pd.DataFrame:
     """
-    输入：pkl 文件路径
+    输入：pkl 文件路径或内存 bundle dict
 
     输出：
       index = (cell_id, gene)
       columns = 13 个 bento_ 前缀特征
 
-    Robustness:
-      - cell id is normalized to str.
-      - Polygon / MultiPolygon / GeometryCollection are reduced to a single Polygon.
-      - bad cell polygons are skipped instead of interrupting the whole run.
-      - missing nuclear boundary is allowed.
+    v2 模式参数：
+      - scale_normalize=True: 每个细胞平移到自身质心并按最大直径缩放到 target_span=100.0，
+        彻底消除 pixel 与 micron 单位差异对 Ripley 特征的影响。
+      - preserve_empty_nan=True: 核内或核外点数为 0 时保留 NaN，不再硬填为 0。
     """
 
     rep = TimerReport() if profile else None
 
     with timed("bento:load_and_process_data", rep, print_each=profile):
         data_df, cell_boundary_dict, nuclear_boundary_dict = load_and_process_data(
-            pkl_file_path
+            pkl_file_path,
+            build_geometry=False,
         )
 
     # 保证 cell/gene 类型统一
@@ -151,7 +161,6 @@ def compute_bento13_from_dict(
         for cid_raw, cell_df in cell_groups:
             cid = str(cid_raw)
 
-            # 这里必须用 cid，不要用 cid_raw
             cell_poly = cell_boundary_dict.get(cid)
             if cell_poly is None:
                 n_skip_missing_cell_boundary += 1
@@ -159,7 +168,6 @@ def compute_bento13_from_dict(
 
             nuc_poly = nuclear_boundary_dict.get(cid) if nuclear_boundary_dict else None
 
-            # 再做一次 Polygon 清洗，防止 MultiPolygon 进入 Bento
             cell_poly = _to_single_polygon(cell_poly)
             nuc_poly = _to_single_polygon(nuc_poly)
 
@@ -167,8 +175,24 @@ def compute_bento13_from_dict(
                 n_skip_bad_cell_polygon += 1
                 continue
 
+            cell_xy_all = cell_df[[x_col, y_col]].to_numpy(dtype=np.float64)
+
+            if scale_normalize:
+                try:
+                    cell_poly, nuc_poly, cell_xy_all, _ = scale_normalize_cell_geometry(
+                        cell_poly,
+                        nuc_poly=nuc_poly,
+                        pts_xy=cell_xy_all,
+                        target_span=target_span,
+                    )
+                except Exception as e:
+                    n_skip_bad_cell_polygon += 1
+                    if profile:
+                        print(f"[bento][skip_cell] cell={cid} scale_normalize failed: {repr(e)}")
+                    continue
+
             try:
-                nuc_prepped = prep(nuc_poly) if nuc_poly is not None else None
+                nuc_prepped = prep(nuc_poly) if (nuc_poly is not None and not use_fast_vectorized) else None
             except Exception:
                 nuc_poly = None
                 nuc_prepped = None
@@ -179,7 +203,12 @@ def compute_bento13_from_dict(
                     pr = prereq_cache[cid]
                 else:
                     try:
-                        pr = compute_cell_prereqs(cell_poly, step=raster_step)
+                        pr = compute_cell_prereqs(
+                            cell_poly,
+                            step=raster_step,
+                            canonical_grid=scale_normalize,
+                            fixed_span=target_span if scale_normalize else None,
+                        )
                     except Exception as e:
                         n_skip_bad_cell_polygon += 1
                         if profile:
@@ -191,76 +220,143 @@ def compute_bento13_from_dict(
 
                     prereq_cache[cid] = pr
 
-            gene_groups = cell_df.groupby(gene_col, sort=False)
+            # Cell-level precomputations for fast vectorized path
+            if use_fast_vectorized:
+                cell_pts_geom_all = shapely.points(cell_xy_all)
+                cell_b_dists_all = shapely.distance(cell_poly.boundary, cell_pts_geom_all)
+                cell_c_dists_all = shapely.distance(cell_poly.centroid, cell_pts_geom_all)
+                if nuc_poly is not None:
+                    cell_in_nuc_all = shapely.contains_xy(
+                        nuc_poly, cell_xy_all[:, 0], cell_xy_all[:, 1]
+                    )
+                    nuc_b_dists_all = shapely.distance(nuc_poly.boundary, cell_pts_geom_all)
+                    nuc_c_dists_all = shapely.distance(nuc_poly.centroid, cell_pts_geom_all)
+                    if pr["raster"] is not None and len(pr["raster"]) > 0:
+                        nuc_c_xy = np.array(
+                            [[nuc_poly.centroid.x, nuc_poly.centroid.y]], dtype=np.float64
+                        )
+                        cell_raster_nuc_moment = _second_moment(nuc_c_xy, pr["raster"])
+                    else:
+                        cell_raster_nuc_moment = None
+                else:
+                    cell_in_nuc_all = None
+                    nuc_b_dists_all = None
+                    nuc_c_dists_all = None
+                    cell_raster_nuc_moment = None
 
-            # 可选：限制每个 cell 只算前 N 个 gene（按 spot 数最多）
+                ripley_est = RipleysKEstimator(
+                    area=float(pr["area"]),
+                    x_min=float(pr["minx"]),
+                    y_min=float(pr["miny"]),
+                    x_max=float(pr["maxx"]),
+                    y_max=float(pr["maxy"]),
+                )
+            else:
+                cell_pts_geom_all = None
+                cell_in_nuc_all = None
+                cell_raster_nuc_moment = None
+                ripley_est = None
+
+            # Group genes within cell using positional indices into cell_xy_all
+            genes_arr = cell_df[gene_col].to_numpy()
+            pos_series = pd.Series(np.arange(len(cell_df)), index=genes_arr)
+            gene_pos_groups = pos_series.groupby(level=0, sort=False)
+
             if max_genes_per_cell is not None:
-                gene_sizes = gene_groups.size().sort_values(ascending=False)
+                gene_sizes = gene_pos_groups.size().sort_values(ascending=False)
                 top_genes = set(gene_sizes.head(max_genes_per_cell).index.astype(str))
             else:
                 top_genes = None
 
-            for gene_raw, df0 in gene_groups:
+            for gene_raw, pos_s in gene_pos_groups:
                 gene = str(gene_raw)
 
                 if top_genes is not None and gene not in top_genes:
                     continue
 
-                # 可选：限制每个 cell-gene 的 spot 数
-                if max_spots_per_gene is not None and len(df0) > max_spots_per_gene:
-                    df0 = df0.iloc[:max_spots_per_gene]
+                pos_idx = pos_s.to_numpy()
+                if max_spots_per_gene is not None and pos_idx.size > max_spots_per_gene:
+                    pos_idx = pos_idx[:max_spots_per_gene]
 
-                pts = df0[[x_col, y_col]].to_numpy()
-                if pts.shape[0] == 0:
+                if pos_idx.size == 0:
                     continue
 
-                # build geometry
-                with timed("bento:build_geodataframe_total", rep, print_each=False):
-                    base = pd.DataFrame(pts, columns=["x", "y"])
-                    geom = gpd.GeoSeries(
-                        [Point(xy) for xy in pts],
-                        index=base.index,
-                        name="geometry",
-                    )
-                    df = gpd.GeoDataFrame(base, geometry=geom)
+                pts = cell_xy_all[pos_idx]
 
-                    df[instance_key] = cell_poly
-                    df[nucleus_key] = nuc_poly
-
-                    # 核内判断：prepared contains
-                    if nuc_prepped is not None:
-                        df[f"{nucleus_key}_index"] = [
-                            "1" if nuc_prepped.contains(p) else ""
-                            for p in geom
-                        ]
-                    else:
-                        df[f"{nucleus_key}_index"] = ""
-
-                    # prereqs
-                    df[f"{instance_key}_radius"] = pr["radius"]
-                    df[f"{instance_key}_raster"] = [pr["raster"]] * len(df)
-                    df[f"{instance_key}_span"] = pr["span"]
-                    df[f"{instance_key}_minx"] = pr["minx"]
-                    df[f"{instance_key}_miny"] = pr["miny"]
-                    df[f"{instance_key}_maxx"] = pr["maxx"]
-                    df[f"{instance_key}_maxy"] = pr["maxy"]
-                    df[f"{instance_key}_area"] = pr["area"]
-
-                with timed("bento:features13_total", rep, print_each=False):
-                    try:
-                        feats = compute_rnaforest13_features(
-                            df,
-                            instance_key=instance_key,
-                            nucleus_key=nucleus_key,
-                        )
-                    except Exception as e:
-                        n_skip_feature_error += 1
-                        if profile:
-                            print(
-                                f"[bento][skip_cellgene] cell={cid} gene={gene} "
-                                f"compute_rnaforest13_features failed: {repr(e)}"
+                if use_fast_vectorized:
+                    with timed("bento:features13_total", rep, print_each=False):
+                        try:
+                            feats = compute_rnaforest13_features_fast(
+                                pts_xy=pts,
+                                pts_geom=cell_pts_geom_all[pos_idx],
+                                cell_poly=cell_poly,
+                                nuc_poly=nuc_poly,
+                                in_nuc_mask=cell_in_nuc_all[pos_idx] if cell_in_nuc_all is not None else None,
+                                pr=pr,
+                                instance_key=instance_key,
+                                nucleus_key=nucleus_key,
+                                preserve_empty_nan=preserve_empty_nan,
+                                ripley_estimator=ripley_est,
+                                cell_raster_nuc_moment=cell_raster_nuc_moment,
+                                precomp_cell_b_dists=cell_b_dists_all[pos_idx],
+                                precomp_cell_c_dists=cell_c_dists_all[pos_idx],
+                                precomp_nuc_b_dists=nuc_b_dists_all[pos_idx] if nuc_b_dists_all is not None else None,
+                                precomp_nuc_c_dists=nuc_c_dists_all[pos_idx] if nuc_c_dists_all is not None else None,
                             )
-                        continue
+                        except Exception as e:
+                            n_skip_feature_error += 1
+                            if profile:
+                                print(
+                                    f"[bento][skip_cellgene] cell={cid} gene={gene} "
+                                    f"compute_rnaforest13_features_fast failed: {repr(e)}"
+                                )
+                            continue
+                else:
+                    with timed("bento:build_geodataframe_total", rep, print_each=False):
+                        base = pd.DataFrame(pts, columns=["x", "y"])
+                        geom = gpd.GeoSeries(
+                            [Point(xy) for xy in pts],
+                            index=base.index,
+                            name="geometry",
+                        )
+                        df = gpd.GeoDataFrame(base, geometry=geom)
+
+                        df[instance_key] = cell_poly
+                        df[nucleus_key] = nuc_poly
+
+                        if nuc_prepped is not None:
+                            df[f"{nucleus_key}_index"] = [
+                                "1" if nuc_prepped.contains(p) else ""
+                                for p in geom
+                            ]
+                        else:
+                            df[f"{nucleus_key}_index"] = ""
+
+                        df[f"{instance_key}_radius"] = pr["radius"]
+                        df[f"{instance_key}_raster"] = [pr["raster"]] * len(df)
+                        df[f"{instance_key}_span"] = pr["span"]
+                        df[f"{instance_key}_minx"] = pr["minx"]
+                        df[f"{instance_key}_miny"] = pr["miny"]
+                        df[f"{instance_key}_maxx"] = pr["maxx"]
+                        df[f"{instance_key}_maxy"] = pr["maxy"]
+                        df[f"{instance_key}_area"] = pr["area"]
+
+                    with timed("bento:features13_total", rep, print_each=False):
+                        try:
+                            feats = compute_rnaforest13_features(
+                                df,
+                                instance_key=instance_key,
+                                nucleus_key=nucleus_key,
+                                preserve_empty_nan=preserve_empty_nan,
+                            )
+                        except Exception as e:
+                            n_skip_feature_error += 1
+                            if profile:
+                                print(
+                                    f"[bento][skip_cellgene] cell={cid} gene={gene} "
+                                    f"compute_rnaforest13_features failed: {repr(e)}"
+                                )
+                            continue
 
                 feats = {f"bento_{k}": v for k, v in feats.items()}
                 idx.append((cid, gene))
