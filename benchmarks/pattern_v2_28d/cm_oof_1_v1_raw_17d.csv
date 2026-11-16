@@ -1,0 +1,9 @@
+,pred:Foci,pred:Nuclear,pred:Cytoplasmic,pred:Nuclear edge,pred:Cell edge,pred:Protrusion,pred:Radial,pred:Random
+true:Foci,1430,0,54,5,2,3,1,5
+true:Nuclear,0,1489,0,0,0,0,2,9
+true:Cytoplasmic,25,1,1353,12,20,0,0,89
+true:Nuclear edge,3,4,11,1416,0,0,11,55
+true:Cell edge,3,0,25,0,1470,0,2,0
+true:Protrusion,24,0,0,0,1,1467,8,0
+true:Radial,3,0,0,5,21,2,1469,0
+true:Random,2,5,92,37,0,0,0,1364
