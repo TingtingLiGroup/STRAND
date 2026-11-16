@@ -10,7 +10,7 @@ from tools.api.compute_all import (
     _prefilter_bundle_before_features,
     compute_all_from_pkl,
 )
-from tools.models.pattern_classifier import PatternClassifier
+from tools.models.pattern_classifier import PatternClassifier, strip_legacy_feature_prefixes
 
 CLASSES = [
     "Foci",
@@ -138,14 +138,15 @@ def main():
             print(f"  v2_28d features computed & cached: {f_v2.shape} in {time.time()-t2:.1f}s")
 
         # Load exact precomputed v1_17d features for the same sampled cells
-        v1_cols = ["cell", "gene"] + clf_v1.feature_cols
-        pre_df = pd.read_parquet(precomp_v1_parquet, columns=v1_cols)
+        pre_df = pd.read_parquet(precomp_v1_parquet)
         pre_df["cell"] = pre_df["cell"].astype(str)
         pre_df["gene"] = pre_df["gene"].astype(str)
-        f_v1 = f_v2[["cell", "gene"]].merge(pre_df, on=["cell", "gene"], how="inner")
+        pre_df = pre_df.rename(columns={c: strip_legacy_feature_prefixes(c) for c in pre_df.columns})
+        keep_v1_cols = ["cell", "gene"] + [strip_legacy_feature_prefixes(c) for c in clf_v1.feature_cols]
+        f_v1 = f_v2[["cell", "gene"]].merge(pre_df[keep_v1_cols], on=["cell", "gene"], how="inner")
         print(
             f"  matched v1_17d rows={len(f_v1)}/{len(f_v2)} | "
-            f"bento_l_max median: v1_raw={f_v1['bento_l_max'].median():.3f} -> v2_scaled={f_v2['bento_l_max'].median():.3f}"
+            f"l_max median: v1_raw={f_v1['l_max'].median():.3f} -> v2_scaled={f_v2['l_max'].median():.3f}"
         )
 
         preds = {
@@ -163,8 +164,8 @@ def main():
                 "model": mname,
                 "n_cells": int(n_cells),
                 "n_cellgenes": int(len(pdf)),
-                "bento_l_max_median": float(
-                    f_v1["bento_l_max"].median() if mname == "v1_raw_17d" else f_v2["bento_l_max"].median()
+                "l_max_median": float(
+                    f_v1["l_max"].median() if mname == "v1_raw_17d" else f_v2["l_max"].median()
                 ),
             }
             for c in CLASSES:

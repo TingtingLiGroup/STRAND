@@ -455,23 +455,23 @@ Bento 特征入口是 `tools.engines.bento_adapter.compute_bento13_from_dict`。
 
 ### 6.5 13 个 Bento 特征定义
 
-最终保留 13 个 Bento/RNAforest 特征，并统一添加 `bento_` 前缀：
+最终保留 13 个 Bento/RNAforest 特征（输出列名直接采用无前缀短名）：
 
 | 输出列 | 来源方法 | 计算逻辑 | 数值解释 |
 |---|---|---|---|
-| `bento_cell_inner_proximity` | `ShapeProximity(cell, cell)` | cell 内所有 RNA 点到 cell boundary 的平均距离，按 cell radius 转成 proximity | 越接近 1 表示越靠近细胞边界；越接近 0 表示越远离边界 |
-| `bento_nucleus_inner_proximity` | `ShapeProximity(cell, nucleus)` | 核内 RNA 点到 nucleus boundary 的平均距离，按 cell radius 转成 proximity | 核内点越靠近核边界值越高；无核或无核内点时为 0/NaN 规则后结果 |
-| `bento_nucleus_outer_proximity` | `ShapeProximity(cell, nucleus)` | 核外 RNA 点到 nucleus boundary 的平均距离，按 cell radius 转成 proximity | 核外点越靠近核边界值越高 |
-| `bento_cell_inner_asymmetry` | `ShapeAsymmetry(cell, cell)` | cell 内 RNA 点到 cell centroid 的平均距离 / cell radius | 越高表示点集越偏离细胞中心 |
-| `bento_nucleus_inner_asymmetry` | `ShapeAsymmetry(cell, nucleus)` | 核内 RNA 点到 nucleus centroid 的平均距离 / cell radius | 越高表示核内点越偏离核中心 |
-| `bento_nucleus_outer_asymmetry` | `ShapeAsymmetry(cell, nucleus)` | 核外 RNA 点到 nucleus centroid 的平均距离 / cell radius | 越高表示核外点相对核中心越偏 |
-| `bento_point_dispersion_norm` | `PointDispersionNorm` | RNA 点相对 RNA 自身 centroid 的 second moment / cell raster 相对同一 centroid 的 second moment | 越高表示 RNA 点集越分散 |
-| `bento_nucleus_dispersion_norm` | `ShapeDispersionNorm(nucleus)` | RNA 点相对 nucleus centroid 的 second moment / cell raster 相对 nucleus centroid 的 second moment | 衡量 RNA 相对核中心的归一化分散 |
-| `bento_l_max` | `RipleyStats` | Ripley H/L function 在半 cell span 范围内的最大值 | 反映空间聚集强度 |
-| `bento_l_max_gradient` | `RipleyStats` | 平滑后的 Ripley 曲线最大梯度 | 反映聚集尺度变化最快的位置 |
-| `bento_l_min_gradient` | `RipleyStats` | 平滑后的 Ripley 曲线最小梯度 | 反映曲线下降/减弱趋势 |
-| `bento_l_monotony` | `RipleyStats` | radii 与 Ripley stats 的 Spearman 相关 | 反映 Ripley 曲线单调性 |
-| `bento_l_half_radius` | `RipleyStats` | radius = `cell_span / 4` 时的 Ripley H 值 | 固定尺度聚集指标 |
+| `cell_inner_proximity` | `ShapeProximity(cell, cell)` | cell 内所有 RNA 点到 cell boundary 的平均距离，按 cell radius 转成 proximity | 越接近 1 表示越靠近细胞边界；越接近 0 表示越远离边界 |
+| `nucleus_inner_proximity` | `ShapeProximity(cell, nucleus)` | 核内 RNA 点到 nucleus boundary 的平均距离，按 cell radius 转成 proximity | 核内点越靠近核边界值越高；无核或无核内点时为 0/NaN 规则后结果 |
+| `nucleus_outer_proximity` | `ShapeProximity(cell, nucleus)` | 核外 RNA 点到 nucleus boundary 的平均距离，按 cell radius 转成 proximity | 核外点越靠近核边界值越高 |
+| `cell_inner_asymmetry` | `ShapeAsymmetry(cell, cell)` | cell 内 RNA 点到 cell centroid 的平均距离 / cell radius | 越高表示点集越偏离细胞中心 |
+| `nucleus_inner_asymmetry` | `ShapeAsymmetry(cell, nucleus)` | 核内 RNA 点到 nucleus centroid 的平均距离 / cell radius | 越高表示核内点越偏离核中心 |
+| `nucleus_outer_asymmetry` | `ShapeAsymmetry(cell, nucleus)` | 核外 RNA 点到 nucleus centroid 的平均距离 / cell radius | 越高表示核外点相对核中心越偏 |
+| `point_dispersion_norm` | `PointDispersionNorm` | RNA 点相对 RNA 自身 centroid 的 second moment / cell raster 相对同一 centroid 的 second moment | 越高表示 RNA 点集越分散 |
+| `nucleus_dispersion_norm` | `ShapeDispersionNorm(nucleus)` | RNA 点相对 nucleus centroid 的 second moment / cell raster 相对 nucleus centroid 的 second moment | 衡量 RNA 相对核中心的归一化分散 |
+| `l_max` | `RipleyStats` | Ripley H/L function 在半 cell span 范围内的最大值 | 反映空间聚集强度 |
+| `l_max_gradient` | `RipleyStats` | 平滑后的 Ripley 曲线最大梯度 | 反映聚集尺度变化最快的位置 |
+| `l_min_gradient` | `RipleyStats` | 平滑后的 Ripley 曲线最小梯度 | 反映曲线下降/减弱趋势 |
+| `l_monotony` | `RipleyStats` | radii 与 Ripley stats 的 Spearman 相关 | 反映 Ripley 曲线单调性 |
+| `l_half_radius` | `RipleyStats` | radius = `cell_span / 4` 时的 Ripley H 值 | 固定尺度聚集指标 |
 
 ### 6.6 Ripley 特征的具体半径设置
 
@@ -543,7 +543,7 @@ Cell(
 
 当前实现是单 z-slice 模式，统一使用 slice `0`，忽略 `z` 列。
 
-### 7.3 `sprawl_peripheral`
+### 7.3 `peripheral`
 
 方法：`tools.sprawl_score.sprawl.metrics.peripheral`
 
@@ -575,7 +575,7 @@ score = (exp_med - obs_med) / (exp_med - 1)
 
 当前 CLI 对 `peripheral` 设置 `compute_variance=False`，因此不会计算组合理论方差，`variance` 为 `NaN`，最终宽表只保留 `score`。
 
-### 7.4 `sprawl_central`
+### 7.4 `central`
 
 方法：`tools.sprawl_score.sprawl.metrics.central`
 
@@ -599,7 +599,7 @@ score = (exp_med - obs_med) / (exp_med - 1)
 | 接近 0 | 接近随机期望 |
 | 小于 0 | 比随机期望更远离中心 |
 
-### 7.5 `sprawl_punctate`
+### 7.5 `punctate`
 
 方法：`tools.sprawl_score.sprawl.metrics.punctate`
 
@@ -634,7 +634,7 @@ num_iterations = 200
 num_pairs = 4
 ```
 
-### 7.6 `sprawl_radial`
+### 7.6 `radial`
 
 方法：`tools.sprawl_score.sprawl.metrics.radial`
 
@@ -669,7 +669,7 @@ score = (exp - obs) / exp
 metrics = ("peripheral", "central")
 ```
 
-这时输出只有 13 个 Bento 特征 + 2 个 SPRAWL 特征，不是完整 17 维特征。默认模型需要 17 个特征，因此 `--fast` 更适合与 `--features-only` 或调试一起使用；如果直接预测，缺少 `sprawl_punctate` 和 `sprawl_radial` 会导致 `PatternClassifier` 报缺失特征列错误。
+这时输出只有 13 个 Bento 特征 + 2 个 SPRAWL 特征，不是完整 17 维特征。默认模型需要 17 个特征，因此 `--fast` 更适合与 `--features-only` 或调试一起使用；如果直接预测，缺少 `punctate` 和 `radial` 会导致 `PatternClassifier` 报缺失特征列错误。
 
 ---
 
@@ -701,23 +701,23 @@ how = "outer"
 当前两个 XGBoost 模型使用同一套 17 个特征：
 
 ```text
-bento_cell_inner_proximity
-bento_nucleus_inner_proximity
-bento_nucleus_outer_proximity
-bento_cell_inner_asymmetry
-bento_nucleus_inner_asymmetry
-bento_nucleus_outer_asymmetry
-bento_point_dispersion_norm
-bento_nucleus_dispersion_norm
-bento_l_max
-bento_l_max_gradient
-bento_l_min_gradient
-bento_l_monotony
-bento_l_half_radius
-sprawl_peripheral
-sprawl_central
-sprawl_punctate
-sprawl_radial
+cell_inner_proximity
+nucleus_inner_proximity
+nucleus_outer_proximity
+cell_inner_asymmetry
+nucleus_inner_asymmetry
+nucleus_outer_asymmetry
+point_dispersion_norm
+nucleus_dispersion_norm
+l_max
+l_max_gradient
+l_min_gradient
+l_monotony
+l_half_radius
+peripheral
+central
+punctate
+radial
 ```
 
 ---
@@ -950,9 +950,9 @@ proximity = (cell_radius - d_inner) / cell_radius
 这个定义用于：
 
 ```text
-bento_cell_inner_proximity
-bento_nucleus_inner_proximity
-bento_nucleus_outer_proximity
+cell_inner_proximity
+nucleus_inner_proximity
+nucleus_outer_proximity
 ```
 
 #### 9.6.2 Asymmetry 类特征
@@ -973,9 +973,9 @@ asymmetry = mean(distance(point_j, centroid_shape)) / cell_radius
 这个定义用于：
 
 ```text
-bento_cell_inner_asymmetry
-bento_nucleus_inner_asymmetry
-bento_nucleus_outer_asymmetry
+cell_inner_asymmetry
+nucleus_inner_asymmetry
+nucleus_outer_asymmetry
 ```
 
 #### 9.6.3 Dispersion 类特征
@@ -988,7 +988,7 @@ M(P, c) = sum(||p_j - c||^2 / |P|)
 
 其中 `P` 是点集，`c` 是参考中心。
 
-`bento_point_dispersion_norm`：
+`point_dispersion_norm`：
 
 ```text
 RNA 点相对 RNA centroid 的 second moment
@@ -996,7 +996,7 @@ RNA 点相对 RNA centroid 的 second moment
 cell raster 相对 RNA centroid 的 second moment
 ```
 
-`bento_nucleus_dispersion_norm`：
+`nucleus_dispersion_norm`：
 
 ```text
 RNA 点相对 nucleus centroid 的 second moment
@@ -1024,17 +1024,17 @@ radii = linspace(1, quarter_span * 2, int(quarter_span * 2))
 
 | 特征 | 计算 |
 |---|---|
-| `bento_l_max` | Ripley H 曲线最大值 |
-| `bento_l_max_gradient` | rolling mean 后曲线梯度最大值 |
-| `bento_l_min_gradient` | rolling mean 后曲线梯度最小值 |
-| `bento_l_monotony` | radius 与 Ripley H 值的 Spearman correlation |
-| `bento_l_half_radius` | `radius = cell_span / 4` 时的 Ripley H 值 |
+| `l_max` | Ripley H 曲线最大值 |
+| `l_max_gradient` | rolling mean 后曲线梯度最大值 |
+| `l_min_gradient` | rolling mean 后曲线梯度最小值 |
+| `l_monotony` | radius 与 Ripley H 值的 Spearman correlation |
+| `l_half_radius` | `radius = cell_span / 4` 时的 Ripley H 值 |
 
 如果 RNA 点少于 2 个，Ripley 统计量没有意义，代码返回 `NaN`。
 
 #### 9.6.5 SPRAWL rank score 公式
 
-`sprawl_peripheral` 和 `sprawl_central` 都使用 rank median score：
+`peripheral` 和 `central` 都使用 rank median score：
 
 ```text
 expected_median_rank = (n_cell_spots + 1) / 2
@@ -1046,12 +1046,12 @@ score = (expected_median_rank - observed_median_rank) / (expected_median_rank - 
 
 | 特征 | rank 排序依据 | 高 score 表示 |
 |---|---|---|
-| `sprawl_peripheral` | spot 到 cell boundary 的距离；越近 rank 越小 | gene 更靠细胞边缘 |
-| `sprawl_central` | spot 到 cell centroid 的平方距离；越近 rank 越小 | gene 更靠细胞中心 |
+| `peripheral` | spot 到 cell boundary 的距离；越近 rank 越小 | gene 更靠细胞边缘 |
+| `central` | spot 到 cell centroid 的平方距离；越近 rank 越小 | gene 更靠细胞中心 |
 
 #### 9.6.6 SPRAWL permutation score 公式
 
-`sprawl_punctate` 和 `sprawl_radial` 使用 permutation null：
+`punctate` 和 `radial` 使用 permutation null：
 
 ```text
 obs_stat = statistic(gene spots)
@@ -1072,8 +1072,8 @@ num_pairs = 4
 
 | 特征 | statistic | 高 score 表示 |
 |---|---|---|
-| `sprawl_punctate` | 随机点对平均欧氏距离 | gene spots 比随机更聚集 |
-| `sprawl_radial` | 随机点对相对 cell centroid 的平均角度距离 | gene spots 更集中在相似径向方向 |
+| `punctate` | 随机点对平均欧氏距离 | gene spots 比随机更聚集 |
+| `radial` | 随机点对相对 cell centroid 的平均角度距离 | gene spots 更集中在相似径向方向 |
 
 ### 9.7 XGBoost 多分类模型的数学形式
 
@@ -1273,7 +1273,7 @@ XGBoost 对 missing value 有内置默认分裂方向学习机制。因此代码
 | SPRAWL punctate/radial | permutation | 与 `num_iterations × num_pairs × gene数 × cell数` 强相关 |
 | XGBoost predict | 17 维矩阵前向 | 相对很快 |
 
-当前默认 `num_iterations=200`、`num_pairs=4` 是速度和稳定性的折中。如果显著增大 `num_iterations`，最直接增加的是 `sprawl_punctate` 和 `sprawl_radial` 的耗时。
+当前默认 `num_iterations=200`、`num_pairs=4` 是速度和稳定性的折中。如果显著增大 `num_iterations`，最直接增加的是 `punctate` 和 `radial` 的耗时。
 
 ---
 
@@ -1673,8 +1673,8 @@ subcellfeat --pkl data/dataset1.pkl --out data/dataset1_features.parquet --featu
 | 字段类型 | 字段 |
 |---|---|
 | ID | `cell`, `gene` |
-| Bento | 13 个 `bento_*` 特征 |
-| SPRAWL | 默认 4 个 `sprawl_*` 特征 |
+| Bento | 13 个空间几何特征（`cell_inner_proximity` 等，无前缀） |
+| SPRAWL | 默认 4 个空间秩次/置换特征（`peripheral`, `central`, `punctate`, `radial`，无前缀） |
 
 ### 14.2 默认 pattern 输出
 

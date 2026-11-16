@@ -10,6 +10,46 @@ _MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 DEFAULT_MODEL_V2_FILENAME = "multiclass_xgb_8class_v2_28d_sparse_aug.joblib"
 LEGACY_MODEL_V1_FILENAME = "multiclass_xgb_8class_prop075_final_from_cv.joblib"
 
+# Bidirectional alias map between unprefixed feature names and legacy bento_*/sprawl_* names,
+# ensuring seamless inference across both v2 (unprefixed) and historical v1 models/tables.
+_BENTO_RAW_NAMES = (
+    "cell_inner_proximity",
+    "nucleus_inner_proximity",
+    "nucleus_outer_proximity",
+    "cell_inner_asymmetry",
+    "nucleus_inner_asymmetry",
+    "nucleus_outer_asymmetry",
+    "point_dispersion_norm",
+    "nucleus_dispersion_norm",
+    "l_max",
+    "l_max_gradient",
+    "l_min_gradient",
+    "l_monotony",
+    "l_half_radius",
+)
+_SPRAWL_RAW_NAMES = ("peripheral", "central", "punctate", "radial")
+
+FEATURE_COLUMN_ALIASES: dict[str, str] = {}
+for _name in _BENTO_RAW_NAMES:
+    FEATURE_COLUMN_ALIASES[_name] = f"bento_{_name}"
+    FEATURE_COLUMN_ALIASES[f"bento_{_name}"] = _name
+for _name in _SPRAWL_RAW_NAMES:
+    FEATURE_COLUMN_ALIASES[_name] = f"sprawl_{_name}"
+    FEATURE_COLUMN_ALIASES[f"sprawl_{_name}"] = _name
+
+
+def strip_legacy_feature_prefixes(col: str) -> str:
+    """Strip legacy 'bento_' or 'sprawl_' prefix from a feature column name."""
+    if col.startswith("bento_"):
+        raw = col[len("bento_"):]
+        if raw in _BENTO_RAW_NAMES:
+            return raw
+    if col.startswith("sprawl_"):
+        raw = col[len("sprawl_"):]
+        if raw in _SPRAWL_RAW_NAMES:
+            return raw
+    return col
+
 
 def default_model_path(filename: str = DEFAULT_MODEL_V2_FILENAME) -> Path:
     """Resolve default model path, works for both editable and wheel installs."""
@@ -95,7 +135,7 @@ class PatternClassifier:
         self.feature_cols = list(self.feature_cols)
         self.classes = list(self.classes)
 
-    def _normalize_input(self, feature_df: pd.DataFrame) -> pd.DataFrame:
+    def _normalize_input(self, feature_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
         df = feature_df.copy()
 
         if "cell" not in df.columns or "gene" not in df.columns:
@@ -104,19 +144,40 @@ class PatternClassifier:
         df["cell"] = df["cell"].astype(str).str.strip()
         df["gene"] = df["gene"].astype(str).str.strip()
 
-        missing = [c for c in self.feature_cols if c not in df.columns]
+        missing = []
+        x_cols = {}
+        for c in self.feature_cols:
+            if c in df.columns:
+                x_cols[c] = df[c]
+            else:
+                alias = FEATURE_COLUMN_ALIASES.get(c)
+                if alias is not None and alias in df.columns:
+                    x_cols[c] = df[alias]
+                else:
+                    missing.append(c)
+
         if missing:
             raise ValueError(f"输入特征表缺少这些特征列: {missing}")
 
-        return df
+        X = pd.DataFrame(x_cols, index=df.index)
+        # Canonicalize output table column names by stripping legacy bento_/sprawl_ prefixes
+        rename_out = {
+            col: strip_legacy_feature_prefixes(col)
+            for col in df.columns
+            if strip_legacy_feature_prefixes(col) != col
+            and strip_legacy_feature_prefixes(col) not in df.columns
+        }
+        if rename_out:
+            df = df.rename(columns=rename_out)
+
+        return df, X
 
     def predict_proba(self, feature_df: pd.DataFrame) -> pd.DataFrame:
         """
         返回每个样本的多分类概率表。
         列顺序与 self.classes 一致。
         """
-        df = self._normalize_input(feature_df)
-        X = df[self.feature_cols].copy()
+        df, X = self._normalize_input(feature_df)
 
         if hasattr(self.model, "predict_proba"):
             probs = self.model.predict_proba(X)
@@ -145,14 +206,12 @@ class PatternClassifier:
     def predict(self, feature_df: pd.DataFrame) -> pd.DataFrame:
         """
         输入包含 cell/gene + 特征列的表，
-        输出原表 + 概率列 + pattern + pattern_prob。
+        输出原表（统一去掉旧版 bento_/sprawl_ 前缀）+ 概率列 + pattern + pattern_prob。
 
-        pattern_prob 是被选中类别的后验概率，即 max_k P(y=k|x)。它可以由 p_* 列自行
-        求最大值得到，但显式给出一列有两个好处：使用者不必每次重算，且它与 pattern
-        标签在同一处生成，不会因为两边各算一次而出现不一致。
+        pattern_prob 是被选中类别的后验概率，即 max_k P(y=k|x)。
         """
-        df = self._normalize_input(feature_df)
-        prob_df = self.predict_proba(df)
+        df, _ = self._normalize_input(feature_df)
+        prob_df = self.predict_proba(feature_df)
         top1 = self.infer_labels(prob_df)
 
         out = df.copy()

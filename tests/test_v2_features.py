@@ -126,6 +126,7 @@ def test_v2_28d_scale_and_translation_invariance():
 
     expected_cols = FEATURE_COLS_V2_28D + ["n_transcripts"]
     assert list(f_1x.columns) == expected_cols
+    assert not any(c.startswith(("bento_", "sprawl_")) for c in f_1x.columns)
     assert f_1x["n_transcripts"].dtype == np.int64
     assert f_1x.index.equals(f_005x.index)
     assert f_1x.index.equals(f_20x.index)
@@ -155,15 +156,15 @@ def test_v2_empty_compartment_nan_and_missing_nucleus():
     f_nuc = compute_all_from_pkl(bundle, feature_set="v2_28d", sprawl_kwargs={"processes": 1})
 
     row_pn = f_nuc.loc[("cell_A", "GENE_NUC")]
-    assert np.isnan(row_pn["bento_nucleus_outer_proximity"])
-    assert np.isnan(row_pn["bento_nucleus_outer_asymmetry"])
+    assert np.isnan(row_pn["nucleus_outer_proximity"])
+    assert np.isnan(row_pn["nucleus_outer_asymmetry"])
     assert np.isnan(row_pn["csr_z_perinuc_cyto_dist"])
     assert row_pn["feat_nuclear_fraction"] == 1.0
     assert row_pn["csr_z_nuclear_frac"] > 3.0
 
     row_pe = f_nuc.loc[("cell_A", "GENE_EDGE")]
-    assert np.isnan(row_pe["bento_nucleus_inner_proximity"])
-    assert np.isnan(row_pe["bento_nucleus_inner_asymmetry"])
+    assert np.isnan(row_pe["nucleus_inner_proximity"])
+    assert np.isnan(row_pe["nucleus_inner_asymmetry"])
     assert row_pe["feat_nuclear_fraction"] == 0.0
     assert row_pe["csr_z_cell_edge_dist"] > 1.5
 
@@ -217,4 +218,17 @@ def test_v2_and_v1_end_to_end_inference_and_parquet_fallback():
         out_v2 = predict_patterns_from_parquet(f_v2_path, tmp / "pred_v2.parquet", model_path="auto")
         out_v1 = predict_patterns_from_parquet(f_v1_path, tmp / "pred_v1.parquet", model_path="auto")
         assert len(out_v2) == len(out_v1) == 4
+        assert not any(c.startswith(("bento_", "sprawl_")) for c in out_v2.columns)
+        assert not any(c.startswith(("bento_", "sprawl_")) for c in out_v1.columns)
         assert "low_abundance" in out_v2.columns and "low_abundance" in out_v1.columns
+
+        # 3. Historical parquet with bento_*/sprawl_* prefixes is accepted and normalized to unprefixed
+        from tools.models.pattern_classifier import FEATURE_COLUMN_ALIASES
+        old_prefixed_df = pd.read_parquet(f_v2_path).rename(
+            columns={k: v for k, v in FEATURE_COLUMN_ALIASES.items() if not k.startswith(("bento_", "sprawl_"))}
+        )
+        f_old_path = tmp / "feat_v2_legacy_prefixed.parquet"
+        old_prefixed_df.to_parquet(f_old_path, index=False)
+        out_from_old = predict_patterns_from_parquet(f_old_path, tmp / "pred_from_old.parquet", model_path="auto")
+        assert not any(c.startswith(("bento_", "sprawl_")) for c in out_from_old.columns)
+        np.testing.assert_allclose(out_v2["pattern_prob"], out_from_old["pattern_prob"], rtol=1e-6)

@@ -37,7 +37,7 @@ def compute_sprawl_scores_from_pkl(
     """
     从 pkl 或内存 bundle dict 计算 SPRAWL scores（默认4项）。
     单 z-slice 模式：忽略 z（边界只有2D）。
-    输出：index=(cell,gene)，columns=sprawl_<metric>
+    输出：index=(cell,gene)，columns=<metric>（无 sprawl_ 前缀）
     """
     rep = TimerReport() if profile else None
 
@@ -86,7 +86,7 @@ def compute_sprawl_scores_from_pkl(
             )
 
     if not cells:
-        empty = pd.DataFrame(columns=[f"sprawl_{m}" for m in metrics])
+        empty = pd.DataFrame(columns=[str(m) for m in metrics])
         empty.index = pd.MultiIndex.from_tuples([], names=[cell_id_col, gene_col])
         return empty
 
@@ -116,7 +116,7 @@ def compute_sprawl_scores_from_pkl(
                 s = score_df[["cell_id", "gene", "score"]].copy()
                 s["cell_id"] = s["cell_id"].astype(str)
                 s["gene"] = s["gene"].astype(str)
-                s = s.rename(columns={"score": f"sprawl_{m}"}).set_index(["cell_id", "gene"])
+                s = s.rename(columns={"score": str(m)}).set_index(["cell_id", "gene"])
                 wide = s if wide is None else wide.join(s, how="outer")
 
     wide.index.set_names([cell_id_col, gene_col], inplace=True)

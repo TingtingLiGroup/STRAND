@@ -68,7 +68,7 @@
 
 ### 4.1 真实数据集 8 类整体预测分布
 
-| 数据集（各 500 细胞） | 模型 | `bento_l_max` 中位数 | Foci | Nuclear | Cytoplasmic | Nuclear edge | Cell edge | Protrusion | Radial | Random |
+| 数据集（各 500 细胞） | 模型 | `l_max` 中位数 | Foci | Nuclear | Cytoplasmic | Nuclear edge | Cell edge | Protrusion | Radial | Random |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | **#10_1 Xenium 脑 (micron)** | `v1_raw_17d` | 0.962 | **0.00%** | 7.82% | 37.52% | 2.40% | 8.69% | 0.08% | **0.06%** | 43.43% |
 | **#10_1 Xenium 脑 (micron)** | `v2_full_28d`（未做稀疏增强） | 4.071 | **61.77%** | 0.83% | 31.75% | 3.36% | 0.36% | 0.01% | 1.13% | 0.80% |

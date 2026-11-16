@@ -17,26 +17,26 @@ from tools.bento_feature.bento.bento_tools import (
 from tools.utils.timing import timed, TimerReport
 
 BENTO_13_COLS = [
-    "bento_cell_inner_proximity",
-    "bento_nucleus_inner_proximity",
-    "bento_nucleus_outer_proximity",
-    "bento_cell_inner_asymmetry",
-    "bento_nucleus_inner_asymmetry",
-    "bento_nucleus_outer_asymmetry",
-    "bento_point_dispersion_norm",
-    "bento_nucleus_dispersion_norm",
-    "bento_l_max",
-    "bento_l_max_gradient",
-    "bento_l_min_gradient",
-    "bento_l_monotony",
-    "bento_l_half_radius",
+    "cell_inner_proximity",
+    "nucleus_inner_proximity",
+    "nucleus_outer_proximity",
+    "cell_inner_asymmetry",
+    "nucleus_inner_asymmetry",
+    "nucleus_outer_asymmetry",
+    "point_dispersion_norm",
+    "nucleus_dispersion_norm",
+    "l_max",
+    "l_max_gradient",
+    "l_min_gradient",
+    "l_monotony",
+    "l_half_radius",
 ]
 
 SPRAWL_4_COLS = [
-    "sprawl_peripheral",
-    "sprawl_central",
-    "sprawl_punctate",
-    "sprawl_radial",
+    "peripheral",
+    "central",
+    "punctate",
+    "radial",
 ]
 
 CSR_6_COLS = [

@@ -43,23 +43,34 @@ low_abundance
 ### Feature columns
 
 ```text
-bento_cell_inner_proximity
-bento_nucleus_inner_proximity
-bento_nucleus_outer_proximity
-bento_cell_inner_asymmetry
-bento_nucleus_inner_asymmetry
-bento_nucleus_outer_asymmetry
-bento_point_dispersion_norm
-bento_nucleus_dispersion_norm
-bento_l_max
-bento_l_max_gradient
-bento_l_min_gradient
-bento_l_monotony
-bento_l_half_radius
-sprawl_peripheral
-sprawl_central
-sprawl_punctate
-sprawl_radial
+cell_inner_proximity
+nucleus_inner_proximity
+nucleus_outer_proximity
+cell_inner_asymmetry
+nucleus_inner_asymmetry
+nucleus_outer_asymmetry
+point_dispersion_norm
+nucleus_dispersion_norm
+l_max
+l_max_gradient
+l_min_gradient
+l_monotony
+l_half_radius
+peripheral
+central
+punctate
+radial
+csr_z_nuclear_frac
+csr_z_cell_edge_dist
+csr_z_perinuc_cyto_dist
+csr_z_centroid_shift
+csr_z_nn_clustering
+csr_z_rayleigh_radial
+feat_log1p_n_spots
+feat_nuclear_fraction
+feat_cell_nc_ratio
+feat_cell_aspect_ratio
+feat_cell_solidity
 ```
 
 ### Pattern column

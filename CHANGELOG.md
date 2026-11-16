@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Upgrade the default RNA localization pattern classifier to a scale-invariant 28-feature architecture (`v2_28d` + `models/multiclass_xgb_8class_v2_28d_sparse_aug.joblib`, stored in cross-version portable XGBoost JSON booster format):
+- Upgrade the default RNA localization pattern classifier to a scale-invariant 28-feature architecture (`v2_28d` + `models/multiclass_xgb_8class_v2_28d_sparse_aug.joblib`, stored in cross-version portable XGBoost JSON booster format) and strip the `bento_` / `sprawl_` prefixes from output feature column names (`cell_inner_proximity`, ..., `l_half_radius`, `peripheral`, `central`, `punctate`, `radial`) for cleaner downstream plotting (retaining bidirectional column-name aliases for legacy models and tables):
   - Per-cell centroid centering and span normalization (`cell_span -> 100.0`) unify pixel- and micron-coordinate datasets without unit drift, eliminating the Ripley `H(r)` scale mismatch while preserving empty-compartment `NaN` semantics.
   - Add 6 same-cell continuous CSR null Z-score features (`csr_z_nuclear_frac`, `csr_z_cell_edge_dist`, `csr_z_perinuc_cyto_dist`, `csr_z_centroid_shift`, `csr_z_nn_clustering`, `csr_z_rayleigh_radial`) and 5 cell-morphology/abundance covariates (`feat_log1p_n_spots`, `feat_nuclear_fraction`, `feat_cell_nc_ratio`, `feat_cell_aspect_ratio`, `feat_cell_solidity`), trained with `[6, 20]` sparse transcript downsampling augmentation.
   - Retain full backward compatibility: `subcellfeat --feature-set v1_17d` switches back to the legacy 17-feature pipeline and model (`multiclass_xgb_8class_prop075_final_from_cv.joblib`), and `subcellfeat-pattern` automatically detects 28-feature versus legacy 17-feature input tables.

@@ -32,7 +32,7 @@ The public CLI defaults to the primary 8-class XGBoost model and preserves `Foci
 
 ### Fast Feature Mode
 
-`subcellfeat --fast` computes only the two lightweight SPRAWL features, `sprawl_peripheral` and `sprawl_central`. Because the packaged pattern classifiers expect all 17 features, fast mode is limited to `--features-only`. Users who need pattern prediction should keep all four SPRAWL features and reduce approximation parameters instead.
+`subcellfeat --fast` computes only the two lightweight SPRAWL features, `peripheral` and `central`. Because the packaged pattern classifiers expect all four SPRAWL features, fast mode is limited to `--features-only`. Users who need pattern prediction should keep all four SPRAWL features and reduce approximation parameters instead.
 
 ### Optimized Backends
 

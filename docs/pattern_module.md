@@ -90,28 +90,28 @@ By default (`--feature-set v2_28d`), each cell is centered at its centroid and s
 ### 4.1 Scale-normalized Bento RNAforest13 features (13)
 
 ```text
-bento_cell_inner_proximity
-bento_nucleus_inner_proximity
-bento_nucleus_outer_proximity
-bento_cell_inner_asymmetry
-bento_nucleus_inner_asymmetry
-bento_nucleus_outer_asymmetry
-bento_point_dispersion_norm
-bento_nucleus_dispersion_norm
-bento_l_max
-bento_l_max_gradient
-bento_l_min_gradient
-bento_l_monotony
-bento_l_half_radius
+cell_inner_proximity
+nucleus_inner_proximity
+nucleus_outer_proximity
+cell_inner_asymmetry
+nucleus_inner_asymmetry
+nucleus_outer_asymmetry
+point_dispersion_norm
+nucleus_dispersion_norm
+l_max
+l_max_gradient
+l_min_gradient
+l_monotony
+l_half_radius
 ```
 
 ### 4.2 Deterministic SPRAWL features (4)
 
 ```text
-sprawl_peripheral
-sprawl_central
-sprawl_punctate
-sprawl_radial
+peripheral
+central
+punctate
+radial
 ```
 
 ### 4.3 Same-cell continuous CSR null Z-scores (6) & morphology/abundance covariates (5)

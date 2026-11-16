@@ -115,7 +115,7 @@ def compute_bento13_from_dict(
 
     输出：
       index = (cell_id, gene)
-      columns = 13 个 bento_ 前缀特征
+      columns = 13 个 Bento 特征（无 bento_ 前缀）
 
     v2 模式参数：
       - scale_normalize=True: 每个细胞平移到自身质心并按最大直径缩放到 target_span=100.0，
@@ -358,9 +358,8 @@ def compute_bento13_from_dict(
                                 )
                             continue
 
-                feats = {f"bento_{k}": v for k, v in feats.items()}
                 idx.append((cid, gene))
-                rows.append(feats)
+                rows.append(dict(feats))
 
     with timed("bento:build_output_df", rep, print_each=profile):
         out = pd.DataFrame(
