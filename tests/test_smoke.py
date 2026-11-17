@@ -76,6 +76,10 @@ def test_cli_coloc_help():
     _run_help("tools.cli.colocalization")
 
 
+def test_cli_decoloc_help():
+    _run_help("tools.decoloc.cli")
+
+
 def test_cli_coloc_plot_help():
     _run_help("tools.cli.coloc_plot")
 

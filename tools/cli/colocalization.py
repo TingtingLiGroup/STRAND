@@ -22,9 +22,26 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--pkl", required=True, help="Path to PKL bundle containing data_df/cell_boundary/nuclear_boundary.")
     parser.add_argument("--out-dir", required=True, help="Output directory for colocalization results.")
+    parser.add_argument(
+        "--engine",
+        choices=["instant", "decoloc"],
+        default="instant",
+        help="Colocalization backend: 'instant' (legacy PP+CPB, default) or 'decoloc' (single-pass stratified t-test).",
+    )
 
-    # InSTAnT core parameters.
-    parser.add_argument("--distance", type=float, default=4.0, help="InSTAnT distance threshold d.")
+    # InSTAnT / shared core parameters.
+    parser.add_argument(
+        "--distance",
+        type=float,
+        default=None,
+        help="Distance threshold d (defaults to 4.0 for instant; auto 0.10 * median_cell_radius for decoloc when omitted).",
+    )
+    parser.add_argument("--decoloc-distance-mode", choices=["cell_scaled", "physical"], default="cell_scaled", help="Radius scaling mode when --engine decoloc is selected.")
+    parser.add_argument("--decoloc-kernel", choices=["gaussian", "uniform"], default="gaussian", help="Distance kernel when --engine decoloc is selected.")
+    parser.add_argument("--decoloc-fdr-alpha", type=float, default=0.01, help="BH FDR cutoff when --engine decoloc is selected.")
+    parser.add_argument("--decoloc-min-fe", type=float, default=1.15, help="Minimum fold enrichment O/E cutoff when --engine decoloc is selected.")
+    parser.add_argument("--decoloc-min-coexpr-cells", type=int, default=15, help="Minimum co-expressing cells when --engine decoloc is selected.")
+    parser.add_argument("--use-3d", action="store_true", help="Use 3D XYZ coordinates when --engine decoloc is selected.")
     parser.add_argument("--pp-alpha", type=float, default=0.001, help="Cell-wise PP p-value threshold used by CPB.")
     parser.add_argument("--cpb-alpha", type=float, default=0.0001, help="Global CPB p-value threshold for significant gene pairs.")
     parser.add_argument("--min-genecount", type=int, default=20, help="InSTAnT internal minimum total transcript count per cell for PP.")
@@ -191,6 +208,48 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
+    if args.engine == "decoloc":
+        from tools.decoloc.api import run_decoloc_from_pkl
+
+        reg_mode = (
+            args.region_threshold_mode
+            if args.region_threshold_mode == "absolute"
+            else "proportional"
+        )
+        out_dec = run_decoloc_from_pkl(
+            args.pkl,
+            out_dir=args.out_dir,
+            distance=args.distance,
+            distance_mode=args.decoloc_distance_mode,
+            region_threshold_mode=reg_mode,
+            kernel=args.decoloc_kernel,
+            use_3d=bool(args.use_3d and not args.use_2d),
+            min_coexpr_cells=args.decoloc_min_coexpr_cells,
+            fdr_alpha=args.decoloc_fdr_alpha,
+            min_fe=args.decoloc_min_fe,
+            do_prefilter=not args.no_prefilter,
+            min_gene_cells=args.gene_filter_min_cells,
+            sample_cells=args.sample_cells,
+            sample_cell_frac=args.sample_cell_frac,
+            sample_random_state=args.sample_random_state,
+            sample_stratify_by=args.sample_stratify_by,
+            groupby=args.groupby,
+            group_values=args.groups,
+            save_all_pairs=args.save_intermediate,
+            threads=args.threads,
+            profile=args.profile,
+        )
+        if "summary_path" in out_dec and "group_results" in out_dec:
+            print(f"[subcellfeat-coloc:decoloc] saved groupby summary: {out_dec['summary_path']}")
+            return 0
+        print(f"[subcellfeat-coloc:decoloc] saved significant pairs: {out_dec['significant_pairs_path']}")
+        print(f"[subcellfeat-coloc:decoloc] saved direct micro pairs: {out_dec['direct_micro_pairs_path']}")
+        print(f"[subcellfeat-coloc:decoloc] saved summary: {out_dec['summary_path']}")
+        print("[subcellfeat-coloc:decoloc] top significant pairs:")
+        print(out_dec["results"].significant_pairs.head())
+        return 0
+
+    eff_distance = 4.0 if args.distance is None else float(args.distance)
     do_prefilter = not args.no_prefilter
     prefilter_kwargs = {
         "filter_cells_by_nc_ratio": True,
@@ -219,7 +278,7 @@ def main() -> None:
     out = run_colocalization_from_pkl(
         pkl_path=args.pkl,
         out_dir=args.out_dir,
-        distance_threshold=args.distance,
+        distance_threshold=eff_distance,
         pp_alpha=args.pp_alpha,
         cpb_alpha=args.cpb_alpha,
         min_genecount=args.min_genecount,

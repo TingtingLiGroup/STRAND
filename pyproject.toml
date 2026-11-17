@@ -67,6 +67,7 @@ subcellfeat-pattern = "tools.cli.pattern:main"
 subcellfeat-compartment = "tools.cli.compartments:main"
 subcellfeat-compartment-redisplay = "tools.cli.compartment_redisplay:main"
 subcellfeat-coloc = "tools.cli.colocalization:main"
+subcellfeat-decoloc = "tools.decoloc.cli:main"
 subcellfeat-coloc-plot = "tools.cli.coloc_plot:main"
 subcellfeat-coloc-summary = "tools.cli.coloc_summary:main"
 

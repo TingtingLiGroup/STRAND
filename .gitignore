@@ -25,6 +25,9 @@ InSTAnT-main/
 PLAN.md
 tmp/
 .pytest_cache/
+benchmarks/**/_cache_*
+benchmarks/**/_pair_tables/
+benchmarks/_scrin_pkg/
 
 tools/.cursor/
 tools/instant_optimized/cross_dataset_validate.py
