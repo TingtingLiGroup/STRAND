@@ -1,0 +1,49 @@
+method,category,is_positive_regime,threshold_call_rate,oracle_top75_call_rate,mean_rank_score,n_pairs_in_regime
+DeCoLoc (direct_micro),P1_sparse_micro,1,1.0,1.0,27.032556982439566,25
+DeCoLoc (direct_micro),P2_moderate_micro,1,1.0,1.0,88.07144497933184,25
+DeCoLoc (direct_micro),P3_imbalanced_150x,1,1.0,1.0,103.54516797060347,25
+DeCoLoc (direct_micro),N1_co_compartment,0,0.0,0.0,0.9629280923680544,25
+DeCoLoc (direct_micro),N2_homotypic_foci,0,0.0,0.0,0.19921635244259928,25
+DeCoLoc (direct_micro),N3_subpop_confounder,0,0.0,0.0,0.7982519978132467,25
+DeCoLoc (whole_cell),P1_sparse_micro,1,1.0,0.0,27.08051462859065,25
+DeCoLoc (whole_cell),P2_moderate_micro,1,1.0,1.0,95.10097240921343,25
+DeCoLoc (whole_cell),P3_imbalanced_150x,1,1.0,1.0,103.33161841041414,25
+DeCoLoc (whole_cell),N1_co_compartment,0,1.0,1.0,57.22097477024682,25
+DeCoLoc (whole_cell),N2_homotypic_foci,0,0.0,0.0,0.2832196188993393,25
+DeCoLoc (whole_cell),N3_subpop_confounder,0,0.0,0.0,0.7970950982736446,25
+InSTAnT (PP+CPB),P1_sparse_micro,1,1.0,0.0,12.336999543760344,25
+InSTAnT (PP+CPB),P2_moderate_micro,1,1.0,1.0,300.01622,25
+InSTAnT (PP+CPB),P3_imbalanced_150x,1,1.0,1.0,300.00262399999997,25
+InSTAnT (PP+CPB),N1_co_compartment,0,1.0,1.0,300.012316,25
+InSTAnT (PP+CPB),N2_homotypic_foci,0,0.0,0.0,0.004717734619438904,25
+InSTAnT (PP+CPB),N3_subpop_confounder,0,0.0,0.0,1.0302778860187596,25
+SCRIN (cooccurrence),P1_sparse_micro,1,1.0,0.76,124.50606699633676,25
+SCRIN (cooccurrence),P2_moderate_micro,1,1.0,1.0,300.0017746487037,25
+SCRIN (cooccurrence),P3_imbalanced_150x,1,0.0,0.0,-0.9999975843756826,25
+SCRIN (cooccurrence),N1_co_compartment,0,1.0,1.0,289.2662001625737,25
+SCRIN (cooccurrence),N2_homotypic_foci,0,0.04,0.0,0.21359705646564778,25
+SCRIN (cooccurrence),N3_subpop_confounder,0,1.0,0.24,101.72013162431,25
+Bento (CLQ),P1_sparse_micro,1,,0.0,3.5898795774475487,25
+Bento (CLQ),P2_moderate_micro,1,,1.0,9.113212518866787,25
+Bento (CLQ),P3_imbalanced_150x,1,,0.0,3.5898795774475487,25
+Bento (CLQ),N1_co_compartment,0,,1.0,8.412203404741831,25
+Bento (CLQ),N2_homotypic_foci,0,,1.0,7.4683480778385976,25
+Bento (CLQ),N3_subpop_confounder,0,,0.0,6.949457835642826,25
+Bento (RNAcoloc),P1_sparse_micro,1,,0.0,-0.9870806247976759,25
+Bento (RNAcoloc),P2_moderate_micro,1,,1.0,4.345463241816049,25
+Bento (RNAcoloc),P3_imbalanced_150x,1,,0.0,-0.9870806247976759,25
+Bento (RNAcoloc),N1_co_compartment,0,,1.0,3.8580448913133036,25
+Bento (RNAcoloc),N2_homotypic_foci,0,,0.0,0.46783482214846267,25
+Bento (RNAcoloc),N3_subpop_confounder,0,,1.0,1.2930471757560553,25
+pyTrance (GNN),P1_sparse_micro,1,,0.04,0.9959774201084685,25
+pyTrance (GNN),P2_moderate_micro,1,,1.0,0.9998684048757425,25
+pyTrance (GNN),P3_imbalanced_150x,1,,0.04,0.997496858115046,25
+pyTrance (GNN),N1_co_compartment,0,,1.0,0.9997812162711575,25
+pyTrance (GNN),N2_homotypic_foci,0,,0.0,0.8305851442735787,25
+pyTrance (GNN),N3_subpop_confounder,0,,0.92,0.9991510476368481,25
+SCRIN (no expr cut),P1_sparse_micro,1,1.0,0.76,124.47059156899654,25
+SCRIN (no expr cut),P2_moderate_micro,1,1.0,1.0,300.0017746487037,25
+SCRIN (no expr cut),P3_imbalanced_150x,1,1.0,0.0,7.937378623348963,25
+SCRIN (no expr cut),N1_co_compartment,0,1.0,1.0,289.2662001625737,25
+SCRIN (no expr cut),N2_homotypic_foci,0,0.04,0.0,0.21359705646564778,25
+SCRIN (no expr cut),N3_subpop_confounder,0,1.0,0.24,101.72013162431,25

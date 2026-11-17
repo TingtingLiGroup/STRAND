@@ -1,0 +1,13 @@
+condition,method,n_significant,fraction_of_all_pairs,n_co_compartment_split,elapsed_seconds,instant_core_seconds,instant_region_seconds
+Original U2OS,InSTAnT (PP+CPB),582,0.06940966010733453,,42.76741807721555,19.553136630915105,23.214281446300447
+Original U2OS,SCRIN (cooccurrence),1490,0.17769827072152652,,14.705971922725439,,
+Original U2OS,DeCoLoc (Total: micro+comp),653,0.07787716159809183,466.0,32.37366350740194,,
+Original U2OS,DeCoLoc (direct_micro),187,0.022301729278473466,466.0,32.37366350740194,,
+Tier-1 Null (Whole-cell shuffle),InSTAnT (PP+CPB),2,0.0002385211687537269,,25.18203259538859,25.18203259538859,0.0
+Tier-1 Null (Whole-cell shuffle),SCRIN (cooccurrence),482,0.05748360166964818,,16.498289616778493,,
+Tier-1 Null (Whole-cell shuffle),DeCoLoc (Total: micro+comp),0,0.0,0.0,34.849140209145844,,
+Tier-1 Null (Whole-cell shuffle),DeCoLoc (direct_micro),0,0.0,0.0,34.849140209145844,,
+Tier-2 Null (Within-region shuffle),InSTAnT (PP+CPB),454,0.054144305307096005,,24.843305776827037,24.843305776827037,0.0
+Tier-2 Null (Within-region shuffle),SCRIN (cooccurrence),1415,0.1687537268932618,,15.799683495424688,,
+Tier-2 Null (Within-region shuffle),DeCoLoc (Total: micro+comp),668,0.07966607036374478,668.0,33.88610530551523,,
+Tier-2 Null (Within-region shuffle),DeCoLoc (direct_micro),0,0.0,668.0,33.88610530551523,,

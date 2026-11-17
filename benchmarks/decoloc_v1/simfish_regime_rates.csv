@@ -1,0 +1,37 @@
+method,category,is_positive_regime,positive_call_rate,n_called,n_total
+InSTAnT (PP+CPB),P1_sparse_micro,1,0.96,24,25
+InSTAnT (PP+CPB),P2_moderate_micro,1,1.0,25,25
+InSTAnT (PP+CPB),P3_imbalanced_150x,1,1.0,25,25
+InSTAnT (PP+CPB),N1_co_compartment,0,1.0,25,25
+InSTAnT (PP+CPB),N2_homotypic_foci,0,0.0,0,25
+InSTAnT (PP+CPB),N3_subpop_confounder,0,0.0,0,25
+SCRIN (std <=100x),P1_sparse_micro,1,1.0,25,25
+SCRIN (std <=100x),P2_moderate_micro,1,0.48,12,25
+SCRIN (std <=100x),P3_imbalanced_150x,1,0.0,0,25
+SCRIN (std <=100x),N1_co_compartment,0,0.84,21,25
+SCRIN (std <=100x),N2_homotypic_foci,0,0.16,4,25
+SCRIN (std <=100x),N3_subpop_confounder,0,0.0,0,25
+SCRIN (no expr cut),P1_sparse_micro,1,1.0,25,25
+SCRIN (no expr cut),P2_moderate_micro,1,0.48,12,25
+SCRIN (no expr cut),P3_imbalanced_150x,1,1.0,25,25
+SCRIN (no expr cut),N1_co_compartment,0,0.84,21,25
+SCRIN (no expr cut),N2_homotypic_foci,0,0.16,4,25
+SCRIN (no expr cut),N3_subpop_confounder,0,0.0,0,25
+DeCoLoc (whole-cell),P1_sparse_micro,1,1.0,25,25
+DeCoLoc (whole-cell),P2_moderate_micro,1,1.0,25,25
+DeCoLoc (whole-cell),P3_imbalanced_150x,1,1.0,25,25
+DeCoLoc (whole-cell),N1_co_compartment,0,1.0,25,25
+DeCoLoc (whole-cell),N2_homotypic_foci,0,0.0,0,25
+DeCoLoc (whole-cell),N3_subpop_confounder,0,0.0,0,25
+DeCoLoc (Uniform),P1_sparse_micro,1,1.0,25,25
+DeCoLoc (Uniform),P2_moderate_micro,1,1.0,25,25
+DeCoLoc (Uniform),P3_imbalanced_150x,1,1.0,25,25
+DeCoLoc (Uniform),N1_co_compartment,0,0.0,0,25
+DeCoLoc (Uniform),N2_homotypic_foci,0,0.0,0,25
+DeCoLoc (Uniform),N3_subpop_confounder,0,0.0,0,25
+DeCoLoc (Gaussian),P1_sparse_micro,1,1.0,25,25
+DeCoLoc (Gaussian),P2_moderate_micro,1,1.0,25,25
+DeCoLoc (Gaussian),P3_imbalanced_150x,1,1.0,25,25
+DeCoLoc (Gaussian),N1_co_compartment,0,0.0,0,25
+DeCoLoc (Gaussian),N2_homotypic_foci,0,0.0,0,25
+DeCoLoc (Gaussian),N3_subpop_confounder,0,0.0,0,25
