@@ -1,0 +1,19 @@
+regime,seed,method,best_k,transcript_ARI,transcript_NMI,macro_F1,nuclear_F1,rare_nucleolus_F1,perinuclear_ER_F1,cytosol_F1,rare_protrusion_F1,structured_spot_fraction,elapsed_seconds,peak_rss_gb
+Homogeneous_SingleType,2026,DeCoMap,5,0.7051,0.7081,0.8645,0.8763,0.8383,0.8309,0.9076,0.8696,1.0,1.722,1.368
+Homogeneous_SingleType,2027,DeCoMap,5,0.7117,0.6994,0.8458,0.8442,0.7713,0.8291,0.9187,0.8654,1.0,1.723,1.448
+Homogeneous_SingleType,2028,DeCoMap,5,0.7445,0.7385,0.8924,0.9085,0.9081,0.8446,0.9198,0.8809,1.0,1.794,1.45
+Heterogeneous_TwoCellTypes,2026,DeCoMap,5,0.3044,0.4279,0.4699,0.5818,0.1641,0.38,0.5915,0.6321,1.0,1.794,1.45
+Heterogeneous_TwoCellTypes,2027,DeCoMap,5,0.5338,0.5639,0.6675,0.5191,0.6216,0.6987,0.8857,0.6126,1.0,1.904,1.451
+Heterogeneous_TwoCellTypes,2028,DeCoMap,5,0.5882,0.6445,0.6132,0.6337,0.8775,0.0116,0.9234,0.6199,1.0,1.9,1.451
+Homogeneous_SingleType,2026,Bento (RNAflux),5,0.3795,0.5137,0.5499,0.4199,0.3591,0.4583,0.7447,0.7677,0.9984,11.152,1.594
+Homogeneous_SingleType,2026,Points2Regions,5,0.5544,0.635,0.7833,0.7497,0.6476,0.7571,0.8482,0.9141,1.0,0.716,1.594
+Homogeneous_SingleType,2027,Bento (RNAflux),5,0.4748,0.5208,0.5392,0.7049,0.0008,0.5226,0.8243,0.6432,0.9981,11.705,1.775
+Homogeneous_SingleType,2027,Points2Regions,5,0.6594,0.6547,0.7814,0.7261,0.6034,0.7456,0.9174,0.9144,1.0,0.723,1.775
+Homogeneous_SingleType,2028,Bento (RNAflux),5,0.4162,0.5428,0.5859,0.4994,0.4805,0.4648,0.7757,0.7091,0.9985,12.126,1.908
+Homogeneous_SingleType,2028,Points2Regions,5,0.6561,0.6535,0.6667,0.7897,0.0,0.7813,0.9059,0.8567,1.0,0.76,1.908
+Heterogeneous_TwoCellTypes,2026,Bento (RNAflux),5,0.3923,0.5017,0.547,0.4291,0.4305,0.6352,0.7182,0.5218,0.9984,13.054,1.954
+Heterogeneous_TwoCellTypes,2026,Points2Regions,5,0.3292,0.4517,0.5292,0.5721,0.1814,0.3657,0.6207,0.9064,1.0,1.028,1.954
+Heterogeneous_TwoCellTypes,2027,Bento (RNAflux),5,0.3234,0.3997,0.4166,0.7205,0.0,0.5723,0.6565,0.1337,0.9981,10.758,1.954
+Heterogeneous_TwoCellTypes,2027,Points2Regions,5,0.2953,0.4323,0.5181,0.565,0.1589,0.3639,0.5851,0.9172,1.0,0.675,1.954
+Heterogeneous_TwoCellTypes,2028,Bento (RNAflux),5,0.3142,0.4415,0.4907,0.5072,0.3929,0.1952,0.6511,0.7071,0.9985,10.75,2.0
+Heterogeneous_TwoCellTypes,2028,Points2Regions,5,0.312,0.4117,0.4072,0.5352,0.2497,0.4544,0.6072,0.1894,1.0,0.755,2.0

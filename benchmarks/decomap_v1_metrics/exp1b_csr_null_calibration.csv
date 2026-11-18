@@ -1,0 +1,7 @@
+null_benchmark,method,n_cells,n_transcripts,false_structured_spot_rate,false_structured_cell_rate,elapsed_seconds
+SimFISH_SpatialUniform_CSR,DeCoMap,80,43840,0.0,0.0,4.003
+U2OS_WithinCell_Permuted_CSR,DeCoMap,60,882737,0.0,0.0,21.071
+SimFISH_SpatialUniform_CSR,Bento (RNAflux),80,43840,0.9986,1.0,11.757
+SimFISH_SpatialUniform_CSR,Points2Regions,80,43840,1.0,1.0,0.737
+U2OS_WithinCell_Permuted_CSR,Bento (RNAflux),60,882737,1.0,1.0,31.572
+U2OS_WithinCell_Permuted_CSR,Points2Regions,60,882737,1.0,1.0,2.315

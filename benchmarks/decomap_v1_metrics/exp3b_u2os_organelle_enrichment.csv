@@ -1,0 +1,13 @@
+reference_set,n_positive_genes,n_panel_genes,method,mean_best_domain_AUROC,sd_AUROC
+Xia2019_ER,28,125,DeCoMap,0.7761,0.0441
+Xia2019_Nucleus,27,125,DeCoMap,0.6742,0.0058
+Fazal2019_APEX_ERM,34,125,DeCoMap,0.6978,0.0427
+Fazal2019_APEX_Nucleus,13,125,DeCoMap,0.6774,0.0207
+Xia2019_ER,28,125,Bento (RNAflux),0.7636,0.0546
+Xia2019_ER,28,125,Points2Regions,0.6986,0.0196
+Xia2019_Nucleus,27,125,Bento (RNAflux),0.6548,0.0217
+Xia2019_Nucleus,27,125,Points2Regions,0.6749,0.0057
+Fazal2019_APEX_ERM,34,125,Bento (RNAflux),0.6994,0.0221
+Fazal2019_APEX_ERM,34,125,Points2Regions,0.684,0.0344
+Fazal2019_APEX_Nucleus,13,125,Bento (RNAflux),0.6566,0.0143
+Fazal2019_APEX_Nucleus,13,125,Points2Regions,0.6225,0.0451

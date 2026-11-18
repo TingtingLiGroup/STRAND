@@ -1,0 +1,4 @@
+method,mean_profile_cosine,min_profile_cosine,mean_profile_spearman,mean_gene_compartment_ARI,mean_elapsed_seconds
+DeCoMap,0.6992,0.5849,0.5894,0.3447,26.709
+Bento (RNAflux),0.6761,0.5376,0.5787,0.2761,50.36
+Points2Regions,0.6403,0.6159,0.5959,0.1919,5.198

@@ -1,0 +1,4 @@
+method,SimFISH_Homogeneous_ARI,SimFISH_TwoCellTypes_ARI,SimFISH_RareNucleolus_F1,SimFISH_RareProtrusion_F1,CSR_Specificity_1_minus_FPR,Mean_Real_Blind_DAPI_IoU,Mean_Real_Blind_DAPI_ARI,U2OS_3Rep_Profile_Cosine,U2OS_3Rep_GeneDomain_ARI,WetLab_Organelle_Mean_AUROC,Mean_Runtime_Seconds
+DeCoMap,0.7204,0.4755,0.6968,0.7468,1.0,0.6843,0.4506,0.6992,0.3447,0.7064,37.22
+Bento (RNAflux),0.4235,0.3433,0.2773,0.5804,0.0007,0.656,0.3515,0.6761,0.2761,0.6936,70.44
+Points2Regions,0.6233,0.3122,0.3068,0.783,0.0,0.5926,0.37,0.6403,0.1919,0.67,6.16
