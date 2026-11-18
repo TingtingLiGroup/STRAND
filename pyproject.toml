@@ -65,6 +65,7 @@ docs = [
 subcellfeat = "tools.cli.run:main"
 subcellfeat-pattern = "tools.cli.pattern:main"
 subcellfeat-compartment = "tools.cli.compartments:main"
+subcellfeat-decomap = "tools.decomap.cli:main"
 subcellfeat-compartment-redisplay = "tools.cli.compartment_redisplay:main"
 subcellfeat-coloc = "tools.cli.colocalization:main"
 subcellfeat-coloc-plot = "tools.cli.coloc_plot:main"
@@ -77,6 +78,7 @@ include = ["tools*", "models*"]
 [tool.setuptools.package-data]
 tools = [
 "**/*.txt",
+"**/*.csv",
 "**/*.json",
 "**/*.yaml",
 "**/*.yml",

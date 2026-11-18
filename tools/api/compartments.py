@@ -10,6 +10,7 @@ def detect_compartments_from_pkl(
     pkl_path: Union[str, Path],
     out_prefix: Union[str, Path],
     *,
+    engine: str = "rnaflux_som",
     batch_col: str = "batch",
     only_batches: Optional[Union[str, Sequence[str]]] = None,
     frac: float = 0.01,
@@ -34,6 +35,27 @@ def detect_compartments_from_pkl(
     output_csv_chunk_size: int = 250_000,
     **kwargs,
 ):
+    if str(engine).lower() == "decomap":
+        from tools.decomap.api import run_decomap_from_pkl
+
+        return run_decomap_from_pkl(
+            pkl_path=pkl_path,
+            out_prefix=out_prefix,
+            batch_col=batch_col,
+            only_batches=only_batches,
+            display_col=display_col,
+            n_clusters=n_clusters,
+            cluster_range_min=cluster_range_min,
+            cluster_range_max=cluster_range_max,
+            figsize=figsize,
+            dpi=dpi,
+            embedding_point_size=embedding_point_size,
+            subdomain_point_size=subdomain_point_size,
+            output_csv_chunk_size=output_csv_chunk_size,
+            profile=profile,
+            **{k: v for k, v in kwargs.items() if k in {"n_components", "n_micro_clusters", "calibrate_csr", "fdr_alpha", "write_plots", "random_state", "threads", "marker_csv", "subdomain_plot_points"}},
+        )
+
     return run_sampled_compartment_from_pkl(
         pkl_path=pkl_path,
         out_prefix=out_prefix,

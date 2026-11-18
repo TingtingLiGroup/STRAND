@@ -46,6 +46,12 @@ def main(argv=None):
     )
     p.add_argument("--pkl", required=True, help="Input unified PKL file")
     p.add_argument("--out-prefix", required=True, help="Output prefix")
+    p.add_argument(
+        "--engine",
+        choices=["rnaflux_som", "decomap"],
+        default="rnaflux_som",
+        help="Compartment detection backend ('rnaflux_som' legacy default or 'decomap').",
+    )
     # p.add_argument("--batch-col", default="batch", help="Batch column name. If absent in data_df, read from coordinates by cell.")
     # p.add_argument("--only-batches", default=None, help="Comma-separated batch values to run, e.g. 1 or 1,3,8")
         # General grouping options.
@@ -182,6 +188,7 @@ def main(argv=None):
     result = detect_compartments_from_pkl(
         pkl_path=args.pkl,
         out_prefix=args.out_prefix,
+        engine=args.engine,
         batch_col=group_col,
         only_batches=only_groups,
         frac=args.frac,

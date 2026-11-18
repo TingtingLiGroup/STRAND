@@ -25,6 +25,8 @@ InSTAnT-main/
 PLAN.md
 tmp/
 .pytest_cache/
+benchmarks/**/_cache_*
+benchmarks/decomap_v1_viz/
 
 tools/.cursor/
 tools/instant_optimized/cross_dataset_validate.py
